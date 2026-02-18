@@ -1,0 +1,173 @@
+package bot
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"path/filepath"
+	"sync"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/otaviocarvalho/tramuntana/internal/config"
+	"github.com/otaviocarvalho/tramuntana/internal/state"
+	"github.com/otaviocarvalho/tramuntana/internal/tmux"
+)
+
+// Bot is the main Telegram bot instance.
+type Bot struct {
+	api    *tgbotapi.BotAPI
+	config *config.Config
+	state  *state.State
+	mu     sync.RWMutex
+
+	// Per-user browse state for directory browser
+	browseStates map[int64]*BrowseState
+	// Per-user cached window lists for window picker
+	windowCache map[int64][]tmux.Window
+}
+
+// New creates a new Bot instance.
+func New(cfg *config.Config) (*Bot, error) {
+	api, err := tgbotapi.NewBotAPI(cfg.TelegramBotToken)
+	if err != nil {
+		return nil, fmt.Errorf("creating bot API: %w", err)
+	}
+
+	log.Printf("Authorized as @%s", api.Self.UserName)
+
+	// Load state
+	statePath := filepath.Join(cfg.TramuntanaDir, "state.json")
+	st, err := state.Load(statePath)
+	if err != nil {
+		return nil, fmt.Errorf("loading state: %w", err)
+	}
+
+	// Ensure tmux session
+	if err := tmux.EnsureSession(cfg.TmuxSessionName); err != nil {
+		return nil, fmt.Errorf("ensuring tmux session: %w", err)
+	}
+
+	return &Bot{
+		api:          api,
+		config:       cfg,
+		state:        st,
+		browseStates: make(map[int64]*BrowseState),
+		windowCache:  make(map[int64][]tmux.Window),
+	}, nil
+}
+
+// Run starts the bot polling loop. Blocks until ctx is cancelled.
+func (b *Bot) Run(ctx context.Context) error {
+	log.Println("Bot is running...")
+
+	offset := 0
+	for {
+		select {
+		case <-ctx.Done():
+			b.saveState()
+			log.Println("Bot shutting down.")
+			return nil
+		default:
+		}
+
+		updates, err := b.getUpdatesRaw(offset, 30)
+		if err != nil {
+			log.Printf("Error getting updates: %v", err)
+			continue
+		}
+
+		for _, update := range updates {
+			if update.UpdateID >= offset {
+				offset = update.UpdateID + 1
+			}
+			b.handleUpdate(update)
+		}
+
+		// Periodically clean up old cache entries
+		if offset > 1000 {
+			cleanupCache(offset - 1000)
+		}
+	}
+}
+
+// handleUpdate routes an update to the appropriate handler.
+func (b *Bot) handleUpdate(update tgbotapi.Update) {
+	if update.Message != nil {
+		if !b.isAuthorized(update.Message.From.ID, update.Message.Chat.ID) {
+			return
+		}
+		b.handleMessage(update.Message)
+	} else if update.CallbackQuery != nil {
+		if !b.isAuthorized(update.CallbackQuery.From.ID, update.CallbackQuery.Message.Chat.ID) {
+			return
+		}
+		b.handleCallback(update.CallbackQuery)
+	}
+}
+
+// isAuthorized checks if a user/chat is allowed.
+func (b *Bot) isAuthorized(userID, chatID int64) bool {
+	if !b.config.IsAllowedUser(userID) {
+		return false
+	}
+	if chatID < 0 && !b.config.IsAllowedGroup(chatID) {
+		return false
+	}
+	return true
+}
+
+// handleMessage routes messages to the appropriate handler.
+func (b *Bot) handleMessage(msg *tgbotapi.Message) {
+	// Check for forum topic closed events
+	if isForumTopicClosed(msg) {
+		b.handleTopicClose(msg)
+		return
+	}
+
+	// Handle commands
+	if msg.IsCommand() {
+		b.handleCommand(msg)
+		return
+	}
+
+	// Handle text messages
+	if msg.Text != "" {
+		b.handleTextMessage(msg)
+		return
+	}
+}
+
+// handleCallback routes callback queries.
+func (b *Bot) handleCallback(cq *tgbotapi.CallbackQuery) {
+	b.routeCallback(cq)
+}
+
+// saveState persists the current state to disk.
+func (b *Bot) saveState() {
+	path := filepath.Join(b.config.TramuntanaDir, "state.json")
+	if err := b.state.Save(path); err != nil {
+		log.Printf("Error saving state: %v", err)
+	}
+}
+
+// reply sends a text reply to a message in its thread.
+func (b *Bot) reply(chatID int64, threadID int, text string) {
+	if _, err := b.sendMessageInThread(chatID, threadID, text); err != nil {
+		log.Printf("Error sending reply: %v", err)
+	}
+}
+
+// API returns the underlying BotAPI for use by other packages.
+func (b *Bot) API() *tgbotapi.BotAPI {
+	return b.api
+}
+
+// State returns the bot's state.
+func (b *Bot) State() *state.State {
+	return b.state
+}
+
+// Config returns the bot's config.
+func (b *Bot) Config() *config.Config {
+	return b.config
+}

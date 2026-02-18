@@ -1,0 +1,218 @@
+package bot
+
+// Telegram forum topic support not in go-telegram-bot-api v5.5.1.
+// We extract these fields from raw JSON updates.
+
+import (
+	"encoding/json"
+	"log"
+	"sync"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+)
+
+// ForumTopicClosed represents a service message about a forum topic closed.
+type ForumTopicClosed struct{}
+
+// threadIDCache stores message_id → thread_id mappings extracted from raw JSON.
+// The go-telegram-bot-api v5 library doesn't support forum topics, so we extract
+// these fields ourselves from the raw update JSON.
+var (
+	threadIDCache   = make(map[int]int) // message_id → thread_id
+	topicClosedSet  = make(map[int]bool) // message_id → is_topic_closed
+	threadCacheMu   sync.RWMutex
+)
+
+// rawMessage is used to extract forum-topic fields from raw update JSON.
+type rawMessage struct {
+	MessageID        int               `json:"message_id"`
+	MessageThreadID  int               `json:"message_thread_id"`
+	ForumTopicClosed *ForumTopicClosed `json:"forum_topic_closed"`
+}
+
+type rawUpdate struct {
+	Message       *rawMessage `json:"message"`
+	CallbackQuery *struct {
+		Message *rawMessage `json:"message"`
+	} `json:"callback_query"`
+}
+
+// extractForumFields parses raw update JSON to cache thread IDs and topic close events.
+func extractForumFields(data []byte) {
+	var raw rawUpdate
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return
+	}
+
+	threadCacheMu.Lock()
+	defer threadCacheMu.Unlock()
+
+	if raw.Message != nil {
+		if raw.Message.MessageThreadID != 0 {
+			threadIDCache[raw.Message.MessageID] = raw.Message.MessageThreadID
+		}
+		if raw.Message.ForumTopicClosed != nil {
+			topicClosedSet[raw.Message.MessageID] = true
+		}
+	}
+}
+
+// getThreadID returns the thread ID for a message.
+func getThreadID(msg *tgbotapi.Message) int {
+	if msg == nil {
+		return 0
+	}
+	threadCacheMu.RLock()
+	defer threadCacheMu.RUnlock()
+	return threadIDCache[msg.MessageID]
+}
+
+// isForumTopicClosed checks if a message is a forum topic closed event.
+func isForumTopicClosed(msg *tgbotapi.Message) bool {
+	if msg == nil {
+		return false
+	}
+	threadCacheMu.RLock()
+	defer threadCacheMu.RUnlock()
+	return topicClosedSet[msg.MessageID]
+}
+
+// cleanupCache removes entries for old message IDs to prevent unbounded growth.
+func cleanupCache(keepAbove int) {
+	threadCacheMu.Lock()
+	defer threadCacheMu.Unlock()
+	for id := range threadIDCache {
+		if id < keepAbove {
+			delete(threadIDCache, id)
+		}
+	}
+	for id := range topicClosedSet {
+		if id < keepAbove {
+			delete(topicClosedSet, id)
+		}
+	}
+}
+
+// getUpdatesRaw fetches updates and returns both parsed updates and raw JSON.
+func (b *Bot) getUpdatesRaw(offset, timeout int) ([]tgbotapi.Update, error) {
+	params := tgbotapi.Params{}
+	params.AddNonZero("offset", offset)
+	params.AddNonZero("timeout", timeout)
+	params["allowed_updates"] = `["message","callback_query"]`
+
+	resp, err := b.api.MakeRequest("getUpdates", params)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract forum fields from raw JSON
+	var rawUpdates []json.RawMessage
+	if err := json.Unmarshal(resp.Result, &rawUpdates); err != nil {
+		log.Printf("Error parsing raw updates: %v", err)
+	} else {
+		for _, raw := range rawUpdates {
+			extractForumFields(raw)
+		}
+	}
+
+	// Parse into standard updates
+	var updates []tgbotapi.Update
+	if err := json.Unmarshal(resp.Result, &updates); err != nil {
+		return nil, err
+	}
+
+	return updates, nil
+}
+
+// sendMessageInThread sends a text message in a specific forum thread.
+func (b *Bot) sendMessageInThread(chatID int64, threadID int, text string) (tgbotapi.Message, error) {
+	params := tgbotapi.Params{}
+	params.AddNonZero64("chat_id", chatID)
+	params.AddNonEmpty("text", text)
+	if threadID != 0 {
+		params.AddNonZero("message_thread_id", threadID)
+	}
+
+	resp, err := b.api.MakeRequest("sendMessage", params)
+	if err != nil {
+		return tgbotapi.Message{}, err
+	}
+
+	var msg tgbotapi.Message
+	json.Unmarshal(resp.Result, &msg)
+	return msg, nil
+}
+
+// sendMessageInThreadMD sends a MarkdownV2 message in a specific forum thread.
+func (b *Bot) sendMessageInThreadMD(chatID int64, threadID int, text string) (tgbotapi.Message, error) {
+	params := tgbotapi.Params{}
+	params.AddNonZero64("chat_id", chatID)
+	params.AddNonEmpty("text", text)
+	params.AddNonEmpty("parse_mode", "MarkdownV2")
+	if threadID != 0 {
+		params.AddNonZero("message_thread_id", threadID)
+	}
+
+	resp, err := b.api.MakeRequest("sendMessage", params)
+	if err != nil {
+		return tgbotapi.Message{}, err
+	}
+
+	var msg tgbotapi.Message
+	json.Unmarshal(resp.Result, &msg)
+	return msg, nil
+}
+
+// editMessageText edits a text message.
+func (b *Bot) editMessageText(chatID int64, messageID int, text string) error {
+	params := tgbotapi.Params{}
+	params.AddNonZero64("chat_id", chatID)
+	params.AddNonZero("message_id", messageID)
+	params.AddNonEmpty("text", text)
+	_, err := b.api.MakeRequest("editMessageText", params)
+	return err
+}
+
+// sendMessageWithKeyboard sends a message with inline keyboard in a thread.
+func (b *Bot) sendMessageWithKeyboard(chatID int64, threadID int, text string, keyboard tgbotapi.InlineKeyboardMarkup) (tgbotapi.Message, error) {
+	kbJSON, _ := json.Marshal(keyboard)
+
+	params := tgbotapi.Params{}
+	params.AddNonZero64("chat_id", chatID)
+	params.AddNonEmpty("text", text)
+	if threadID != 0 {
+		params.AddNonZero("message_thread_id", threadID)
+	}
+	params["reply_markup"] = string(kbJSON)
+
+	resp, err := b.api.MakeRequest("sendMessage", params)
+	if err != nil {
+		return tgbotapi.Message{}, err
+	}
+
+	var msg tgbotapi.Message
+	json.Unmarshal(resp.Result, &msg)
+	return msg, nil
+}
+
+// editMessageWithKeyboard edits a message with new text and keyboard.
+func (b *Bot) editMessageWithKeyboard(chatID int64, messageID int, text string, keyboard tgbotapi.InlineKeyboardMarkup) error {
+	kbJSON, _ := json.Marshal(keyboard)
+
+	params := tgbotapi.Params{}
+	params.AddNonZero64("chat_id", chatID)
+	params.AddNonZero("message_id", messageID)
+	params.AddNonEmpty("text", text)
+	params["reply_markup"] = string(kbJSON)
+	_, err := b.api.MakeRequest("editMessageText", params)
+	return err
+}
+
+// deleteMessage deletes a message.
+func (b *Bot) deleteMessage(chatID int64, messageID int) error {
+	params := tgbotapi.Params{}
+	params.AddNonZero64("chat_id", chatID)
+	params.AddNonZero("message_id", messageID)
+	_, err := b.api.MakeRequest("deleteMessage", params)
+	return err
+}

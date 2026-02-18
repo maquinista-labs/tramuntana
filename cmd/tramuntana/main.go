@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/joho/godotenv"
 	"github.com/otaviocarvalho/tramuntana/hook"
+	"github.com/otaviocarvalho/tramuntana/internal/bot"
 	"github.com/otaviocarvalho/tramuntana/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -38,9 +42,15 @@ func main() {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Println("Starting tramuntana bot...")
-			// Bot wiring comes in Task 07
-			return nil
+			b, err := bot.New(cfg)
+			if err != nil {
+				return fmt.Errorf("creating bot: %w", err)
+			}
+
+			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+			defer cancel()
+
+			return b.Run(ctx)
 		},
 	}
 	serveCmd.Flags().StringVar(&cfgPath, "config", "", "path to .env config file")
