@@ -126,9 +126,9 @@ func (b *Bot) handleHistoryCallback(cq *tgbotapi.CallbackQuery) {
 	_ = fmt.Sprintf("history callback: %s", cq.Data)
 }
 
-// handleScreenshotCallback is a stub for screenshot callbacks (Task 21).
+// handleScreenshotCallback handles screenshot control callbacks.
 func (b *Bot) handleScreenshotCallback(cq *tgbotapi.CallbackQuery) {
-	_ = fmt.Sprintf("screenshot callback: %s", cq.Data)
+	b.handleScreenshotCB(cq)
 }
 
 // handleInteractiveCallback is implemented in interactive.go

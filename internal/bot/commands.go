@@ -100,8 +100,7 @@ func (b *Bot) handleEsc(msg *tgbotapi.Message) {
 
 // handleScreenshot captures and sends a terminal screenshot.
 func (b *Bot) handleScreenshot(msg *tgbotapi.Message) {
-	// Placeholder — will be fully implemented in Task 21
-	b.reply(msg.Chat.ID, getThreadID(msg), "/screenshot not yet implemented.")
+	b.handleScreenshotCommand(msg)
 }
 
 // handleHistory shows paginated session history.
