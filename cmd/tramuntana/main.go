@@ -3,21 +3,26 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/joho/godotenv"
 	"github.com/otaviocarvalho/tramuntana/hook"
 	"github.com/otaviocarvalho/tramuntana/internal/bot"
 	"github.com/otaviocarvalho/tramuntana/internal/config"
+	"github.com/otaviocarvalho/tramuntana/internal/monitor"
+	"github.com/otaviocarvalho/tramuntana/internal/queue"
+	"github.com/otaviocarvalho/tramuntana/internal/state"
 	"github.com/spf13/cobra"
 )
 
 var (
-	version   = "v0.1.0"
-	cfgPath   string
-	cfg       *config.Config
+	version     = "v0.1.0"
+	cfgPath     string
+	cfg         *config.Config
 	installHook bool
 )
 
@@ -42,15 +47,7 @@ func main() {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			b, err := bot.New(cfg)
-			if err != nil {
-				return fmt.Errorf("creating bot: %w", err)
-			}
-
-			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-			defer cancel()
-
-			return b.Run(ctx)
+			return runServe()
 		},
 	}
 	serveCmd.Flags().StringVar(&cfgPath, "config", "", "path to .env config file")
@@ -80,4 +77,55 @@ func main() {
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+func runServe() error {
+	// Create bot
+	b, err := bot.New(cfg)
+	if err != nil {
+		return fmt.Errorf("creating bot: %w", err)
+	}
+
+	// Load monitor state
+	msPath := filepath.Join(cfg.TramuntanaDir, "monitor_state.json")
+	ms, err := state.LoadMonitorState(msPath)
+	if err != nil {
+		log.Printf("Warning: loading monitor state: %v (starting fresh)", err)
+		ms = state.NewMonitorState()
+	}
+	b.SetMonitorState(ms)
+
+	// Startup recovery: reconcile state with live tmux windows
+	liveBindings := b.ReconcileState()
+	log.Printf("Startup: %d live bindings recovered", liveBindings)
+
+	// Create message queue
+	q := queue.New(b.API())
+
+	// Create session monitor
+	mon := monitor.New(cfg, b.State(), ms, q)
+
+	// Create status poller
+	sp := bot.NewStatusPoller(b, q)
+
+	// Context for graceful shutdown
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	// Start monitor in background
+	go mon.Run(ctx)
+
+	// Start status poller in background
+	go sp.Run(ctx)
+
+	// Run bot (blocks until ctx is cancelled)
+	err = b.Run(ctx)
+
+	// Graceful shutdown: save all state
+	log.Println("Saving state...")
+	if err := ms.ForceSave(msPath); err != nil {
+		log.Printf("Error saving monitor state: %v", err)
+	}
+
+	return err
 }
