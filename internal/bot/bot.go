@@ -24,6 +24,8 @@ type Bot struct {
 	browseStates map[int64]*BrowseState
 	// Per-user cached window lists for window picker
 	windowCache map[int64][]tmux.Window
+	// Per-user window picker state
+	windowPickerStates map[int64]*windowPickerState
 }
 
 // New creates a new Bot instance.
@@ -48,11 +50,12 @@ func New(cfg *config.Config) (*Bot, error) {
 	}
 
 	return &Bot{
-		api:          api,
-		config:       cfg,
-		state:        st,
-		browseStates: make(map[int64]*BrowseState),
-		windowCache:  make(map[int64][]tmux.Window),
+		api:                api,
+		config:             cfg,
+		state:              st,
+		browseStates:       make(map[int64]*BrowseState),
+		windowCache:        make(map[int64][]tmux.Window),
+		windowPickerStates: make(map[int64]*windowPickerState),
 	}, nil
 }
 
