@@ -131,7 +131,4 @@ func (b *Bot) handleScreenshotCallback(cq *tgbotapi.CallbackQuery) {
 	_ = fmt.Sprintf("screenshot callback: %s", cq.Data)
 }
 
-// handleInteractiveCallback is a stub for interactive UI callbacks (Task 19).
-func (b *Bot) handleInteractiveCallback(cq *tgbotapi.CallbackQuery) {
-	_ = fmt.Sprintf("interactive callback: %s", cq.Data)
-}
+// handleInteractiveCallback is implemented in interactive.go

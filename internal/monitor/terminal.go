@@ -103,6 +103,128 @@ func extractAfterSpinner(line string) string {
 	return ""
 }
 
+// UIPattern defines markers for detecting interactive UI elements.
+type UIPattern struct {
+	Name       string
+	TopMarkers []string
+	BotMarkers []string // empty = use last non-empty line
+}
+
+// UIContent holds extracted interactive content.
+type UIContent struct {
+	Name    string
+	Content string
+}
+
+var uiPatterns = []UIPattern{
+	{
+		Name:       "ExitPlanMode",
+		TopMarkers: []string{"Would you like to proceed?", "Claude has written up a plan"},
+		BotMarkers: []string{"ctrl-g to edit", "Esc to"},
+	},
+	{
+		Name:       "AskUserQuestion_multi",
+		TopMarkers: []string{"← "},
+		BotMarkers: nil, // last non-empty line
+	},
+	{
+		Name:       "AskUserQuestion_single",
+		TopMarkers: []string{"☐", "✔", "☒"},
+		BotMarkers: []string{"Enter to select"},
+	},
+	{
+		Name:       "PermissionPrompt",
+		TopMarkers: []string{"Do you want to proceed?"},
+		BotMarkers: []string{"Esc to cancel"},
+	},
+	{
+		Name:       "RestoreCheckpoint",
+		TopMarkers: []string{"Restore the code"},
+		BotMarkers: []string{"Enter to continue"},
+	},
+	{
+		Name:       "Settings",
+		TopMarkers: []string{"Settings:"},
+		BotMarkers: []string{"Esc to cancel", "Type to filter"},
+	},
+}
+
+// IsInteractiveUI returns true if the pane text contains an interactive UI prompt.
+func IsInteractiveUI(paneText string) bool {
+	_, ok := ExtractInteractiveContent(paneText)
+	return ok
+}
+
+// ExtractInteractiveContent extracts the interactive UI content from pane text.
+// Returns the UI content and true if found.
+func ExtractInteractiveContent(paneText string) (UIContent, bool) {
+	stripped := StripPaneChrome(paneText)
+	lines := strings.Split(stripped, "\n")
+
+	for _, pattern := range uiPatterns {
+		content, ok := tryExtract(lines, pattern)
+		if ok {
+			return content, true
+		}
+	}
+	return UIContent{}, false
+}
+
+func tryExtract(lines []string, pattern UIPattern) (UIContent, bool) {
+	// Find top marker
+	topIdx := -1
+	for i, line := range lines {
+		for _, marker := range pattern.TopMarkers {
+			if strings.Contains(line, marker) {
+				topIdx = i
+				break
+			}
+		}
+		if topIdx >= 0 {
+			break
+		}
+	}
+
+	if topIdx < 0 {
+		return UIContent{}, false
+	}
+
+	// Find bottom marker
+	botIdx := -1
+	if len(pattern.BotMarkers) == 0 {
+		// Use last non-empty line
+		for i := len(lines) - 1; i > topIdx; i-- {
+			if strings.TrimSpace(lines[i]) != "" {
+				botIdx = i
+				break
+			}
+		}
+	} else {
+		for i := topIdx + 1; i < len(lines); i++ {
+			for _, marker := range pattern.BotMarkers {
+				if strings.Contains(lines[i], marker) {
+					botIdx = i
+					break
+				}
+			}
+			if botIdx >= 0 {
+				break
+			}
+		}
+	}
+
+	if botIdx < 0 {
+		return UIContent{}, false
+	}
+
+	// Extract content between markers
+	content := strings.Join(lines[topIdx:botIdx+1], "\n")
+	return UIContent{
+		Name:    pattern.Name,
+		Content: content,
+	}, true
+}
+
 // ShortenSeparators replaces long ─ lines with a shorter version for display.
 func ShortenSeparators(text string) string {
 	lines := strings.Split(text, "\n")

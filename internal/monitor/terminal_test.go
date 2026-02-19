@@ -163,6 +163,77 @@ func TestShortenSeparators(t *testing.T) {
 	}
 }
 
+func TestIsInteractiveUI_ExitPlanMode(t *testing.T) {
+	lines := []string{
+		"Some content",
+		"Would you like to proceed?",
+		"Option 1",
+		"Option 2",
+		"ctrl-g to edit",
+	}
+	paneText := strings.Join(lines, "\n")
+	if !IsInteractiveUI(paneText) {
+		t.Error("should detect ExitPlanMode")
+	}
+
+	ui, ok := ExtractInteractiveContent(paneText)
+	if !ok {
+		t.Fatal("should extract content")
+	}
+	if ui.Name != "ExitPlanMode" {
+		t.Errorf("name = %q, want ExitPlanMode", ui.Name)
+	}
+}
+
+func TestIsInteractiveUI_PermissionPrompt(t *testing.T) {
+	lines := []string{
+		"Do you want to proceed?",
+		"Allow this action?",
+		"Esc to cancel",
+	}
+	paneText := strings.Join(lines, "\n")
+	if !IsInteractiveUI(paneText) {
+		t.Error("should detect PermissionPrompt")
+	}
+
+	ui, _ := ExtractInteractiveContent(paneText)
+	if ui.Name != "PermissionPrompt" {
+		t.Errorf("name = %q, want PermissionPrompt", ui.Name)
+	}
+}
+
+func TestIsInteractiveUI_AskUserQuestion(t *testing.T) {
+	lines := []string{
+		"Which option?",
+		"☐ Option A",
+		"✔ Option B",
+		"Enter to select",
+	}
+	paneText := strings.Join(lines, "\n")
+	if !IsInteractiveUI(paneText) {
+		t.Error("should detect AskUserQuestion")
+	}
+}
+
+func TestIsInteractiveUI_None(t *testing.T) {
+	paneText := "Just some regular output\nNothing special here\n"
+	if IsInteractiveUI(paneText) {
+		t.Error("should not detect interactive UI in plain text")
+	}
+}
+
+func TestIsInteractiveUI_RestoreCheckpoint(t *testing.T) {
+	lines := []string{
+		"Restore the code to a previous state?",
+		"Select checkpoint:",
+		"Enter to continue",
+	}
+	paneText := strings.Join(lines, "\n")
+	if !IsInteractiveUI(paneText) {
+		t.Error("should detect RestoreCheckpoint")
+	}
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a
