@@ -225,6 +225,48 @@ func tryExtract(lines []string, pattern UIPattern) (UIContent, bool) {
 	}, true
 }
 
+// ExtractBashOutput extracts ! command output from a captured tmux pane.
+// Searches from the bottom for the "! <command>" echo line, then returns
+// that line and everything below it. Returns empty string if not found.
+func ExtractBashOutput(paneText, command string) string {
+	stripped := StripPaneChrome(paneText)
+	lines := strings.Split(stripped, "\n")
+
+	// Match on the first 10 chars of the command to handle terminal truncation
+	matchPrefix := command
+	if len(matchPrefix) > 10 {
+		matchPrefix = matchPrefix[:10]
+	}
+
+	// Search from bottom for the "! <command>" echo line
+	cmdIdx := -1
+	for i := len(lines) - 1; i >= 0; i-- {
+		trimmed := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(trimmed, "! "+matchPrefix) || strings.HasPrefix(trimmed, "!"+matchPrefix) {
+			cmdIdx = i
+			break
+		}
+	}
+
+	if cmdIdx < 0 {
+		return ""
+	}
+
+	// Include the command echo line and everything after
+	output := lines[cmdIdx:]
+
+	// Strip trailing empty lines
+	for len(output) > 0 && strings.TrimSpace(output[len(output)-1]) == "" {
+		output = output[:len(output)-1]
+	}
+
+	if len(output) == 0 {
+		return ""
+	}
+
+	return strings.Join(output, "\n")
+}
+
 // ShortenSeparators replaces long ─ lines with a shorter version for display.
 func ShortenSeparators(text string) string {
 	lines := strings.Split(text, "\n")

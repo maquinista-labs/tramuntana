@@ -234,6 +234,94 @@ func TestIsInteractiveUI_RestoreCheckpoint(t *testing.T) {
 	}
 }
 
+func TestExtractBashOutput_Found(t *testing.T) {
+	lines := []string{
+		"Some previous output",
+		"! git status",
+		"On branch main",
+		"nothing to commit",
+		"",
+		strings.Repeat("─", 40),
+		"> prompt",
+	}
+	paneText := strings.Join(lines, "\n")
+
+	got := ExtractBashOutput(paneText, "git status")
+	if got == "" {
+		t.Fatal("should find bash output")
+	}
+	if !strings.Contains(got, "! git status") {
+		t.Error("should include command echo")
+	}
+	if !strings.Contains(got, "nothing to commit") {
+		t.Error("should include output")
+	}
+}
+
+func TestExtractBashOutput_NotFound(t *testing.T) {
+	lines := []string{
+		"Some regular output",
+		"No bash command here",
+		strings.Repeat("─", 40),
+		"> prompt",
+	}
+	paneText := strings.Join(lines, "\n")
+
+	got := ExtractBashOutput(paneText, "git status")
+	if got != "" {
+		t.Errorf("should not find output, got %q", got)
+	}
+}
+
+func TestExtractBashOutput_PrefixMatch(t *testing.T) {
+	lines := []string{
+		"! git status --porcelain --long --verbose...", // long command shown in pane
+		"On branch main",
+		strings.Repeat("─", 40),
+		"> prompt",
+	}
+	paneText := strings.Join(lines, "\n")
+
+	// Should match on first 10 chars of command
+	got := ExtractBashOutput(paneText, "git status --porcelain --long --verbose --show-stash")
+	if got == "" {
+		t.Fatal("should match on prefix")
+	}
+}
+
+func TestExtractBashOutput_NoSpace(t *testing.T) {
+	lines := []string{
+		"!git status",
+		"On branch main",
+		strings.Repeat("─", 40),
+		"> prompt",
+	}
+	paneText := strings.Join(lines, "\n")
+
+	got := ExtractBashOutput(paneText, "git status")
+	if got == "" {
+		t.Fatal("should match without space after !")
+	}
+}
+
+func TestExtractBashOutput_StripsTrailingEmpty(t *testing.T) {
+	lines := []string{
+		"! ls",
+		"file1.txt",
+		"file2.txt",
+		"",
+		"",
+		strings.Repeat("─", 40),
+		"> prompt",
+	}
+	paneText := strings.Join(lines, "\n")
+
+	got := ExtractBashOutput(paneText, "ls")
+	if strings.HasSuffix(got, "\n") {
+		t.Error("should strip trailing empty lines")
+	}
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a

@@ -16,6 +16,9 @@ func (b *Bot) handleTextMessage(msg *tgbotapi.Message) {
 	threadID := strconv.Itoa(getThreadID(msg))
 	chatID := msg.Chat.ID
 
+	// Cancel any running bash capture for this topic
+	cancelBashCapture(msg.From.ID, getThreadID(msg))
+
 	// Store group chat ID
 	b.state.SetGroupChatID(userID, threadID, chatID)
 	b.saveState()
@@ -91,9 +94,13 @@ func (b *Bot) handleBashCommand(msg *tgbotapi.Message, windowID, text string) {
 	cmd := text[1:]
 	if err := tmux.SendKeysWithDelay(session, windowID, cmd, 500); err != nil {
 		log.Printf("Error sending bash command to %s: %v", windowID, err)
+		return
 	}
 
-	// Bash capture goroutine will be added in Task 23
+	// Launch capture goroutine
+	chatID := msg.Chat.ID
+	threadID := getThreadID(msg)
+	b.startBashCapture(msg.From.ID, chatID, threadID, windowID, cmd)
 }
 
 // routeCallback routes callback queries to the appropriate handler.
