@@ -1,7 +1,6 @@
 package bot
 
 import (
-	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -116,14 +115,16 @@ func (b *Bot) routeCallback(cq *tgbotapi.CallbackQuery) {
 		b.handleScreenshotCallback(cq)
 	case strings.HasPrefix(data, "nav_"):
 		b.handleInteractiveCallback(cq)
+	case data == "noop":
+		// No-op button (e.g., page counter), already answered above
 	default:
 		log.Printf("Unknown callback data: %s", data)
 	}
 }
 
-// handleHistoryCallback is a stub for history pagination callbacks (Task 22).
+// handleHistoryCallback handles history pagination callbacks.
 func (b *Bot) handleHistoryCallback(cq *tgbotapi.CallbackQuery) {
-	_ = fmt.Sprintf("history callback: %s", cq.Data)
+	b.handleHistoryCB(cq)
 }
 
 // handleScreenshotCallback handles screenshot control callbacks.

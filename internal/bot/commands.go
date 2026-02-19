@@ -105,8 +105,7 @@ func (b *Bot) handleScreenshot(msg *tgbotapi.Message) {
 
 // handleHistory shows paginated session history.
 func (b *Bot) handleHistory(msg *tgbotapi.Message) {
-	// Placeholder — will be fully implemented in Task 22
-	b.reply(msg.Chat.ID, getThreadID(msg), "/history not yet implemented.")
+	b.handleHistoryCommand(msg)
 }
 
 // handleProject binds a topic to a Minuano project.
