@@ -65,8 +65,30 @@ func New(cfg *config.Config) (*Bot, error) {
 	}, nil
 }
 
+// registerCommands sets the bot's command menu in Telegram.
+func (b *Bot) registerCommands() {
+	commands := tgbotapi.NewSetMyCommands(
+		tgbotapi.BotCommand{Command: "screenshot", Description: "Terminal screenshot with control keys"},
+		tgbotapi.BotCommand{Command: "esc", Description: "Send Escape to interrupt Claude"},
+		tgbotapi.BotCommand{Command: "history", Description: "Message history for this topic"},
+		tgbotapi.BotCommand{Command: "project", Description: "Bind a Minuano project to this topic"},
+		tgbotapi.BotCommand{Command: "tasks", Description: "List tasks for the bound project"},
+		tgbotapi.BotCommand{Command: "pick", Description: "Assign a specific task to Claude"},
+		tgbotapi.BotCommand{Command: "auto", Description: "Auto-claim and work project tasks"},
+		tgbotapi.BotCommand{Command: "batch", Description: "Work a list of tasks in order"},
+		tgbotapi.BotCommand{Command: "clear", Description: "Forward /clear to Claude Code"},
+		tgbotapi.BotCommand{Command: "help", Description: "Forward /help to Claude Code"},
+	)
+	if _, err := b.api.Request(commands); err != nil {
+		log.Printf("Warning: failed to register bot commands: %v", err)
+	} else {
+		log.Println("Registered bot command menu")
+	}
+}
+
 // Run starts the bot polling loop. Blocks until ctx is cancelled.
 func (b *Bot) Run(ctx context.Context) error {
+	b.registerCommands()
 	log.Println("Bot is running...")
 
 	offset := 0

@@ -40,8 +40,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-MINUANO_BIN="$MINUANO_DIR/minuano"
-
 # --- Helpers ---
 
 GREEN='\033[0;32m'
@@ -109,19 +107,26 @@ fi
 echo -e "  ${GREEN}OK${NC}: TELEGRAM_BOT_TOKEN is set"
 echo -e "  ${GREEN}OK${NC}: ALLOWED_USERS is set"
 
+# Set MINUANO_BIN after sourcing .env so it doesn't get overwritten.
+MINUANO_BIN="$MINUANO_DIR/minuano"
+
 # --- Prerequisites ---
 
 section "Prerequisites"
 
 if [ ! -x "$MINUANO_BIN" ]; then
   echo "Building minuano binary..."
-  (cd "$MINUANO_DIR" && go build -o "$MINUANO_BIN" ./cmd/minuano)
+  if ! (cd "$MINUANO_DIR" && go build -o "$MINUANO_BIN" ./cmd/minuano) 2>&1; then
+    echo -e "  ${RED}FATAL${NC}: cannot build minuano (go build failed in $MINUANO_DIR)"
+    exit 1
+  fi
 fi
 
 if [ -x "$MINUANO_BIN" ]; then
   echo -e "  ${GREEN}OK${NC}: minuano binary at $MINUANO_BIN"
 else
-  echo -e "  ${RED}FATAL${NC}: cannot build minuano"
+  echo -e "  ${RED}FATAL${NC}: minuano binary not found at $MINUANO_BIN"
+  echo "  Try: cd $MINUANO_DIR && go build -o minuano ./cmd/minuano"
   exit 1
 fi
 
