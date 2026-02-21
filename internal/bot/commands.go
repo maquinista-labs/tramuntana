@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/otaviocarvalho/tramuntana/internal/git"
 	"github.com/otaviocarvalho/tramuntana/internal/state"
 	"github.com/otaviocarvalho/tramuntana/internal/tmux"
 )
@@ -37,6 +38,10 @@ func (b *Bot) handleCommand(msg *tgbotapi.Message) {
 		b.handleAdd(msg)
 	case "get":
 		b.handleGet(msg)
+	case "pickw":
+		b.handlePickwCommand(msg)
+	case "merge":
+		b.handleMergeCommand(msg)
 	default:
 		b.reply(msg.Chat.ID, getThreadID(msg), "Unknown command: /"+msg.Command())
 	}
@@ -217,6 +222,20 @@ func (b *Bot) handleTopicClose(msg *tgbotapi.Message) {
 
 	// Remove project binding for this thread
 	b.state.RemoveProject(threadIDStr)
+
+	// Clean up worktree if this thread has one
+	if wi, ok := b.state.GetWorktreeInfo(threadIDStr); ok {
+		if wi.WorktreeDir != "" && !wi.IsMergeTopic {
+			if err := git.WorktreeRemove(wi.RepoRoot, wi.WorktreeDir); err != nil {
+				log.Printf("Error removing worktree %s: %v", wi.WorktreeDir, err)
+			}
+			if err := git.DeleteBranch(wi.RepoRoot, wi.Branch); err != nil {
+				log.Printf("Error deleting branch %s: %v", wi.Branch, err)
+			}
+		}
+		b.state.RemoveWorktreeInfo(threadIDStr)
+		cleaned = true
+	}
 
 	if cleaned {
 		b.saveState()

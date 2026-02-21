@@ -84,6 +84,8 @@ func (b *Bot) registerCommands() {
 		tgbotapi.BotCommand{Command: "batch", Description: "Work a list of tasks in order"},
 		tgbotapi.BotCommand{Command: "add", Description: "Create a new Minuano task"},
 		tgbotapi.BotCommand{Command: "get", Description: "Browse and send a file"},
+		tgbotapi.BotCommand{Command: "pickw", Description: "Pick task in isolated worktree"},
+		tgbotapi.BotCommand{Command: "merge", Description: "Merge a branch (auto-resolve conflicts)"},
 		tgbotapi.BotCommand{Command: "clear", Description: "Forward /clear to Claude Code"},
 		tgbotapi.BotCommand{Command: "help", Description: "Forward /help to Claude Code"},
 	)

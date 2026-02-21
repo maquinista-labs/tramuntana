@@ -18,6 +18,16 @@ type UserThread struct {
 	ThreadID string
 }
 
+// WorktreeInfo holds worktree metadata for a thread.
+type WorktreeInfo struct {
+	WorktreeDir  string `json:"worktree_dir"`
+	Branch       string `json:"branch"`
+	RepoRoot     string `json:"repo_root"`
+	BaseBranch   string `json:"base_branch"`
+	TaskID       string `json:"task_id,omitempty"`
+	IsMergeTopic bool   `json:"is_merge_topic,omitempty"`
+}
+
 // State is the main application state, persisted as state.json.
 type State struct {
 	mu                 sync.RWMutex
@@ -27,6 +37,7 @@ type State struct {
 	UserWindowOffsets  map[string]map[string]int64  `json:"user_window_offsets"`  // user_id → window_id → byte_offset
 	GroupChatIDs       map[string]int64             `json:"group_chat_ids"`       // "user_id:thread_id" → chat_id
 	ProjectBindings    map[string]string            `json:"project_bindings"`     // thread_id → project_id
+	WorktreeBindings   map[string]WorktreeInfo      `json:"worktree_bindings"`    // thread_id → worktree info
 }
 
 // NewState creates a new empty state.
@@ -38,6 +49,7 @@ func NewState() *State {
 		UserWindowOffsets:  make(map[string]map[string]int64),
 		GroupChatIDs:       make(map[string]int64),
 		ProjectBindings:    make(map[string]string),
+		WorktreeBindings:   make(map[string]WorktreeInfo),
 	}
 }
 
@@ -65,6 +77,9 @@ func Load(path string) (*State, error) {
 	}
 	if s.ProjectBindings == nil {
 		s.ProjectBindings = make(map[string]string)
+	}
+	if s.WorktreeBindings == nil {
+		s.WorktreeBindings = make(map[string]WorktreeInfo)
 	}
 	return s, nil
 }
@@ -258,4 +273,37 @@ func (s *State) AllBoundWindowIDs() map[string]bool {
 		}
 	}
 	return result
+}
+
+// SetWorktreeInfo stores worktree metadata for a thread.
+func (s *State) SetWorktreeInfo(threadID string, wi WorktreeInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.WorktreeBindings[threadID] = wi
+}
+
+// GetWorktreeInfo returns the worktree info for a thread.
+func (s *State) GetWorktreeInfo(threadID string) (WorktreeInfo, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	wi, ok := s.WorktreeBindings[threadID]
+	return wi, ok
+}
+
+// RemoveWorktreeInfo removes worktree metadata for a thread.
+func (s *State) RemoveWorktreeInfo(threadID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.WorktreeBindings, threadID)
+}
+
+// AllWorktreeThreadIDs returns all thread IDs that have worktree bindings.
+func (s *State) AllWorktreeThreadIDs() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ids := make([]string, 0, len(s.WorktreeBindings))
+	for tid := range s.WorktreeBindings {
+		ids = append(ids, tid)
+	}
+	return ids
 }

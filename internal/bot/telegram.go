@@ -5,6 +5,7 @@ package bot
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"sync"
 
@@ -219,5 +220,34 @@ func (b *Bot) deleteMessage(chatID int64, messageID int) error {
 	params.AddNonZero64("chat_id", chatID)
 	params.AddNonZero("message_id", messageID)
 	_, err := b.api.MakeRequest("deleteMessage", params)
+	return err
+}
+
+// createForumTopic creates a new forum topic and returns the thread ID.
+func (b *Bot) createForumTopic(chatID int64, name string) (int, error) {
+	params := tgbotapi.Params{}
+	params.AddNonZero64("chat_id", chatID)
+	params.AddNonEmpty("name", name)
+
+	resp, err := b.api.MakeRequest("createForumTopic", params)
+	if err != nil {
+		return 0, err
+	}
+
+	var result struct {
+		MessageThreadID int `json:"message_thread_id"`
+	}
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		return 0, fmt.Errorf("parsing createForumTopic response: %w", err)
+	}
+	return result.MessageThreadID, nil
+}
+
+// closeForumTopic closes a forum topic.
+func (b *Bot) closeForumTopic(chatID int64, threadID int) error {
+	params := tgbotapi.Params{}
+	params.AddNonZero64("chat_id", chatID)
+	params.AddNonZero("message_thread_id", threadID)
+	_, err := b.api.MakeRequest("closeForumTopic", params)
 	return err
 }
