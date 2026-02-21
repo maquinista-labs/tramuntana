@@ -142,24 +142,8 @@ func (q *Queue) processContent(task MessageTask, ch chan MessageTask) {
 	// Try to merge consecutive content tasks
 	text = q.mergeFromChannel(text, task.WindowID, ch)
 
-	// Try to convert status message to first content message
-	ut := userThread{task.UserID, task.ThreadID}
-	q.mu.Lock()
-	status, hasStatus := q.statusMsgs[ut]
-	if hasStatus {
-		delete(q.statusMsgs, ut)
-	}
-	q.mu.Unlock()
-
-	if hasStatus && status.MessageID != 0 {
-		// Edit status message in-place with content
-		if err := q.editMessage(task.ChatID, status.MessageID, text); err != nil {
-			// Fallback: send new message
-			q.sendMessage(task.ChatID, task.ThreadID, text)
-		}
-		return
-	}
-
+	// Always send content as a new message.
+	// Status messages are managed exclusively by the StatusPoller.
 	q.sendMessage(task.ChatID, task.ThreadID, text)
 }
 
