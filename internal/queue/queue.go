@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/otaviocarvalho/tramuntana/internal/render"
@@ -80,8 +81,8 @@ func (q *Queue) Enqueue(task MessageTask) {
 
 	select {
 	case ch <- task:
-	default:
-		log.Printf("Queue full for user %d, dropping message", task.UserID)
+	case <-time.After(5 * time.Second):
+		log.Printf("Queue full for user %d after 5s, dropping message (type=%s)", task.UserID, task.ContentType)
 	}
 }
 
@@ -115,7 +116,8 @@ func (q *Queue) processTask(task MessageTask, ch chan MessageTask) {
 	// Check flood control
 	if q.flood.IsFlooded(task.UserID) {
 		if task.ContentType == "status_update" || task.ContentType == "status_clear" {
-			return // drop status during flood
+			log.Printf("Flood control: dropping %s for user %d", task.ContentType, task.UserID)
+			return
 		}
 		q.flood.WaitIfFlooded(task.UserID)
 	}
@@ -297,6 +299,7 @@ func (q *Queue) sendMessage(chatID int64, threadID int, text string) int {
 }
 
 // sendSingleMessage sends a single message with MarkdownV2, falling back to plain text.
+// Retries once with flood-aware backoff. Does not retry permanent errors.
 func (q *Queue) sendSingleMessage(chatID int64, threadID int, text string) int {
 	// Try MarkdownV2 first
 	mdv2 := render.ToMarkdownV2(text)
@@ -305,14 +308,34 @@ func (q *Queue) sendSingleMessage(chatID int64, threadID int, text string) int {
 		return msgID
 	}
 
-	// Fallback to plain text
+	// Don't retry permanent errors (bad thread, bad chat, etc.)
+	if isPermanentError(err) {
+		log.Printf("Permanent send error (chat=%d, thread=%d): %v", chatID, threadID, err)
+		return 0
+	}
+
+	// Wait for flood to clear before plain text fallback
+	q.flood.WaitIfFlooded(chatID)
+
 	plain := render.ToPlainText(text)
 	msgID, err = q.sendRaw(chatID, threadID, plain, "")
 	if err != nil {
-		log.Printf("Error sending message: %v", err)
+		log.Printf("Plain text fallback failed (chat=%d, thread=%d): %v", chatID, threadID, err)
 		return 0
 	}
 	return msgID
+}
+
+// isPermanentError returns true for errors that should not be retried.
+func isPermanentError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "thread not found") ||
+		strings.Contains(msg, "chat not found") ||
+		strings.Contains(msg, "bot was blocked") ||
+		strings.Contains(msg, "not enough rights")
 }
 
 // sendRaw sends a message via Telegram API.
