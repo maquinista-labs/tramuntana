@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"fmt"
+
 	"github.com/otaviocarvalho/tramuntana/internal/monitor"
 	"github.com/otaviocarvalho/tramuntana/internal/queue"
 	"github.com/otaviocarvalho/tramuntana/internal/tmux"
@@ -22,16 +24,18 @@ type statusKey struct {
 type StatusPoller struct {
 	bot          *Bot
 	queue        *queue.Queue
+	monitor      *monitor.Monitor
 	mu           sync.RWMutex
 	lastStatus   map[statusKey]string // last status text per user+thread
 	pollInterval time.Duration
 }
 
 // NewStatusPoller creates a new StatusPoller.
-func NewStatusPoller(bot *Bot, q *queue.Queue) *StatusPoller {
+func NewStatusPoller(bot *Bot, q *queue.Queue, mon *monitor.Monitor) *StatusPoller {
 	return &StatusPoller{
 		bot:          bot,
 		queue:        q,
+		monitor:      mon,
 		lastStatus:   make(map[statusKey]string),
 		pollInterval: 1 * time.Second,
 	}
@@ -145,12 +149,32 @@ func (sp *StatusPoller) poll() {
 					})
 				}
 			} else if lastText != "" {
-				// Status cleared
+				// Status cleared — Claude finished
 				sp.mu.Lock()
 				delete(sp.lastStatus, key)
 				sp.mu.Unlock()
 
+				// Check for turn timing
+				var timingText string
+				if sp.monitor != nil {
+					if start, ok := sp.monitor.GetAndClearTurnStart(windowID); ok {
+						elapsed := time.Since(start)
+						timingText = formatDuration(elapsed)
+					}
+				}
+
 				if sp.queue != nil {
+					if timingText != "" {
+						// Send timing as content before clearing status
+						sp.queue.Enqueue(queue.MessageTask{
+							UserID:      userID,
+							ThreadID:    threadID,
+							ChatID:      chatID,
+							Parts:       []string{timingText},
+							ContentType: "content",
+							WindowID:    windowID,
+						})
+					}
 					sp.queue.Enqueue(queue.MessageTask{
 						UserID:      userID,
 						ThreadID:    threadID,
@@ -162,4 +186,15 @@ func (sp *StatusPoller) poll() {
 			}
 		}
 	}
+}
+
+// formatDuration formats a duration as "Brewed for Xm Ys" or "Brewed for Ys".
+func formatDuration(d time.Duration) string {
+	secs := int(d.Seconds())
+	if secs < 60 {
+		return fmt.Sprintf("Brewed for %ds", secs)
+	}
+	mins := secs / 60
+	secs = secs % 60
+	return fmt.Sprintf("Brewed for %dm %ds", mins, secs)
 }

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/otaviocarvalho/tramuntana/internal/config"
@@ -27,6 +28,7 @@ type Monitor struct {
 	fileMtimes     map[string]time.Time
 	lastSessionMap map[string]state.SessionMapEntry
 	pollInterval   time.Duration
+	turnStarts     sync.Map // windowID → time.Time
 }
 
 // New creates a new Monitor.
@@ -208,13 +210,36 @@ func (m *Monitor) processSession(sessionKey, sessionID, windowID, jsonlPath stri
 	m.monitorState.UpdateOffset(sessionKey, sessionID, jsonlPath, newOffset)
 }
 
+// SetTurnStart records the start time of a user turn for a window.
+func (m *Monitor) SetTurnStart(windowID string) {
+	m.turnStarts.Store(windowID, time.Now())
+}
+
+// GetAndClearTurnStart returns the turn start time and clears it.
+func (m *Monitor) GetAndClearTurnStart(windowID string) (time.Time, bool) {
+	v, ok := m.turnStarts.LoadAndDelete(windowID)
+	if !ok {
+		return time.Time{}, false
+	}
+	return v.(time.Time), true
+}
+
 func (m *Monitor) enqueueEntry(userID int64, threadID int, chatID int64, windowID string, pe ParsedEntry) {
 	var text string
 	var contentType string
 
+	// Track turn start when we see a user entry
+	if pe.Role == "user" && pe.ContentType == "text" {
+		m.SetTurnStart(windowID)
+	}
+
 	switch pe.ContentType {
 	case "text":
-		text = render.FormatText(pe.Text)
+		if pe.Role == "user" {
+			text = "\U0001F464 " + render.FormatText(pe.Text)
+		} else {
+			text = render.FormatText(pe.Text)
+		}
 		contentType = "content"
 	case "tool_use":
 		text = render.FormatToolUse(pe.ToolName, "")

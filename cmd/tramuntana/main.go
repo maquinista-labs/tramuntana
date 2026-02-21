@@ -106,7 +106,7 @@ func runServe() error {
 	mon := monitor.New(cfg, b.State(), ms, q)
 
 	// Create status poller
-	sp := bot.NewStatusPoller(b, q)
+	sp := bot.NewStatusPoller(b, q, mon)
 
 	// Context for graceful shutdown
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
