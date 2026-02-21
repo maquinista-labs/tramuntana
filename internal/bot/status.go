@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -127,19 +126,7 @@ func (sp *StatusPoller) poll() {
 			} else {
 				sp.mu.Lock()
 				sp.missCount[windowID]++
-				misses := sp.missCount[windowID]
 				sp.mu.Unlock()
-
-				// DEBUG: log pane tail when we have an active status but detection fails
-				if misses == 1 {
-					paneLines := strings.Split(paneText, "\n")
-					start := len(paneLines) - 8
-					if start < 0 {
-						start = 0
-					}
-					tail := strings.Join(paneLines[start:], " | ")
-					log.Printf("Status poller DEBUG: window %s miss, pane tail: %s", windowID, tail)
-				}
 			}
 		}
 
