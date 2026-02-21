@@ -139,12 +139,17 @@ func (q *Queue) processTask(task MessageTask, ch chan MessageTask) {
 func (q *Queue) processContent(task MessageTask, ch chan MessageTask) {
 	text := strings.Join(task.Parts, "\n")
 
-	// Try to merge consecutive content tasks
-	text = q.mergeFromChannel(text, task.WindowID, ch)
+	// Try to merge consecutive content tasks, collecting any non-content tasks
+	var deferred []MessageTask
+	text, deferred = q.mergeFromChannel2(text, task.WindowID, ch)
 
-	// Always send content as a new message.
-	// Status messages are managed exclusively by the StatusPoller.
+	// Send the merged content
 	q.sendMessage(task.ChatID, task.ThreadID, text)
+
+	// Process any deferred non-content tasks that were in the channel
+	for _, dt := range deferred {
+		q.processTask(dt, ch)
+	}
 }
 
 func (q *Queue) processToolUse(task MessageTask) {
@@ -243,27 +248,29 @@ func (q *Queue) processStatusClear(task MessageTask) {
 	}
 }
 
-// mergeFromChannel peeks at the channel and merges consecutive content tasks.
-func (q *Queue) mergeFromChannel(text, windowID string, ch chan MessageTask) string {
+// mergeFromChannel2 merges consecutive content tasks from the channel.
+// Returns the merged text and any non-content tasks that were found in the channel
+// (these must be processed by the caller to preserve ordering).
+func (q *Queue) mergeFromChannel2(text, windowID string, ch chan MessageTask) (string, []MessageTask) {
+	var deferred []MessageTask
 	for {
 		select {
 		case next, ok := <-ch:
 			if !ok {
-				return text
+				return text, deferred
 			}
 			if next.ContentType != "content" || next.WindowID != windowID {
-				// Put it back by processing immediately after we're done
-				go func() { ch <- next }()
-				return text
+				deferred = append(deferred, next)
+				return text, deferred
 			}
 			nextText := strings.Join(next.Parts, "\n")
 			if len(text)+len(nextText)+1 > maxMergeLen {
-				go func() { ch <- next }()
-				return text
+				deferred = append(deferred, next)
+				return text, deferred
 			}
 			text = text + "\n" + nextText
 		default:
-			return text
+			return text, deferred
 		}
 	}
 }
