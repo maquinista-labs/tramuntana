@@ -117,11 +117,6 @@ func (sp *StatusPoller) poll() {
 				continue
 			}
 
-			// Skip if queue has pending messages
-			if sp.queue != nil && sp.queue.QueueLen(userID) > 0 {
-				continue
-			}
-
 			key := statusKey{userID, threadID}
 
 			sp.mu.RLock()
