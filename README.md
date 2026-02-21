@@ -4,7 +4,7 @@
 
 A Go application that bridges Telegram group topics to [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions via tmux. Each topic maps to a tmux window running its own Claude Code process, giving you a persistent, observable AI coding interface from Telegram.
 
-Complements [Minuano](https://github.com/maquinista-labs/minuano)'s task scheduling with a Telegram interface for interactive sessions, task coordination, and mobile-friendly agent management.
+Inspired by [CCBot](https://github.com/anthropics/ccbot), rewritten from scratch in Go. Complements [Minuano](https://github.com/maquinista-labs/minuano)'s task scheduling with a Telegram interface for interactive sessions, task coordination, and mobile-friendly agent management.
 
 ## How it works
 
