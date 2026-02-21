@@ -55,7 +55,7 @@ func ToMarkdownV2(text string) string {
 		var quoted []string
 		for i, line := range lines {
 			if i == len(lines)-1 {
-				quoted = append(quoted, "||"+line+"||")
+				quoted = append(quoted, ">"+line+"||")
 			} else {
 				quoted = append(quoted, ">"+line)
 			}

@@ -203,6 +203,11 @@ func (q *Queue) processStatusUpdate(task MessageTask) {
 	text := strings.Join(task.Parts, "\n")
 	ut := userThread{task.UserID, task.ThreadID}
 
+	// Send typing indicator when Claude is actively working
+	if strings.Contains(strings.ToLower(text), "esc to interrupt") {
+		q.sendTyping(task.ChatID)
+	}
+
 	q.mu.RLock()
 	existing, hasExisting := q.statusMsgs[ut]
 	q.mu.RUnlock()
@@ -349,4 +354,12 @@ func (q *Queue) deleteMessage(chatID int64, messageID int) {
 	params.AddNonZero64("chat_id", chatID)
 	params.AddNonZero("message_id", messageID)
 	q.api.MakeRequest("deleteMessage", params)
+}
+
+// sendTyping sends a "typing" chat action to indicate the bot is working.
+func (q *Queue) sendTyping(chatID int64) {
+	params := tgbotapi.Params{}
+	params.AddNonZero64("chat_id", chatID)
+	params.AddNonEmpty("action", "typing")
+	q.api.MakeRequest("sendChatAction", params)
 }
