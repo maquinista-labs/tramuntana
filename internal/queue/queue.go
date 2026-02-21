@@ -217,6 +217,7 @@ func (q *Queue) processStatusUpdate(task MessageTask) {
 	}
 
 	// Send new status message
+	log.Printf("Queue: sending new status message to chat=%d thread=%d text=%q", task.ChatID, task.ThreadID, text)
 	msgID := q.sendMessage(task.ChatID, task.ThreadID, text)
 	q.mu.Lock()
 	q.statusMsgs[ut] = StatusInfo{

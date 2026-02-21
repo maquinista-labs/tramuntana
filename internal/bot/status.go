@@ -107,6 +107,9 @@ func (sp *StatusPoller) poll() {
 
 		// Extract status line
 		statusText, hasStatus := monitor.ExtractStatusLine(paneText)
+		if hasStatus {
+			log.Printf("Status poller: window %s status=%q", windowID, statusText)
+		}
 
 		// Update for each observing user
 		for _, ut := range users {
