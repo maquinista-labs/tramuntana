@@ -177,6 +177,10 @@ func (m *Monitor) processSession(sessionKey, sessionID, windowID, jsonlPath stri
 			entries = append(entries, entry)
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		log.Printf("JSONL read error for %s at offset %d: %v (not advancing offset)", jsonlPath, offset+bytesRead, err)
+		return // don't advance offset — will re-read on next poll
+	}
 
 	if len(entries) == 0 {
 		// Update offset even if no entries (skip empty lines)
