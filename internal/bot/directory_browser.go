@@ -235,29 +235,22 @@ func (b *Bot) handleDirUp(cq *tgbotapi.CallbackQuery, bs *BrowseState, userID in
 	b.mu.Unlock()
 }
 
-func (b *Bot) handleDirConfirm(cq *tgbotapi.CallbackQuery, bs *BrowseState, userID int64) {
-	selectedPath := bs.CurrentPath
-	pendingText := bs.PendingText
-	chatID := bs.ChatID
-	threadID := bs.ThreadID
+// createWindowResult holds the result of creating a new tmux window for a directory.
+type createWindowResult struct {
+	WindowID   string
+	WindowName string
+}
 
-	// Clear browse state
-	b.mu.Lock()
-	delete(b.browseStates, userID)
-	b.mu.Unlock()
-
-	// Edit message to show progress
-	b.editMessageText(chatID, bs.MessageID, fmt.Sprintf("Creating session in %s...", shortenPath(selectedPath)))
-
+// createWindowForDir creates a new tmux window in the given directory, waits for the
+// session_map entry, binds the thread, and renames the topic. Returns the result or error.
+func (b *Bot) createWindowForDir(dir string, userID int64, chatID int64, threadID int) (*createWindowResult, error) {
 	// Build Minuano environment if configured
-	env := b.buildMinuanoEnv(filepath.Base(selectedPath))
+	env := b.buildMinuanoEnv(filepath.Base(dir))
 
 	// Create new tmux window
-	windowID, err := tmux.NewWindow(b.config.TmuxSessionName, "", selectedPath, b.config.ClaudeCommand, env)
+	windowID, err := tmux.NewWindow(b.config.TmuxSessionName, "", dir, b.config.ClaudeCommand, env)
 	if err != nil {
-		log.Printf("Error creating window: %v", err)
-		b.editMessageText(chatID, bs.MessageID, "Error: failed to create session.")
-		return
+		return nil, fmt.Errorf("creating window: %w", err)
 	}
 
 	// Wait for session_map entry (up to 5s)
@@ -293,7 +286,7 @@ func (b *Bot) handleDirConfirm(cq *tgbotapi.CallbackQuery, bs *BrowseState, user
 	b.saveState()
 
 	// Get window name for topic rename
-	windowName := filepath.Base(selectedPath)
+	windowName := filepath.Base(dir)
 	if dn, ok := b.state.GetWindowDisplayName(windowID); ok {
 		windowName = dn
 	}
@@ -301,12 +294,36 @@ func (b *Bot) handleDirConfirm(cq *tgbotapi.CallbackQuery, bs *BrowseState, user
 	// Rename topic
 	b.renameForumTopic(chatID, threadID, windowName)
 
+	return &createWindowResult{WindowID: windowID, WindowName: windowName}, nil
+}
+
+func (b *Bot) handleDirConfirm(cq *tgbotapi.CallbackQuery, bs *BrowseState, userID int64) {
+	selectedPath := bs.CurrentPath
+	pendingText := bs.PendingText
+	chatID := bs.ChatID
+	threadID := bs.ThreadID
+
+	// Clear browse state
+	b.mu.Lock()
+	delete(b.browseStates, userID)
+	b.mu.Unlock()
+
+	// Edit message to show progress
+	b.editMessageText(chatID, bs.MessageID, fmt.Sprintf("Creating session in %s...", shortenPath(selectedPath)))
+
+	result, err := b.createWindowForDir(selectedPath, userID, chatID, threadID)
+	if err != nil {
+		log.Printf("Error creating window: %v", err)
+		b.editMessageText(chatID, bs.MessageID, "Error: failed to create session.")
+		return
+	}
+
 	// Update the browser message
-	b.editMessageText(chatID, bs.MessageID, fmt.Sprintf("Bound to: %s", windowName))
+	b.editMessageText(chatID, bs.MessageID, fmt.Sprintf("Bound to: %s", result.WindowName))
 
 	// Send pending text
 	if pendingText != "" {
-		if err := tmux.SendKeysWithDelay(b.config.TmuxSessionName, windowID, pendingText, 500); err != nil {
+		if err := tmux.SendKeysWithDelay(b.config.TmuxSessionName, result.WindowID, pendingText, 500); err != nil {
 			log.Printf("Error sending pending text: %v", err)
 		}
 	}

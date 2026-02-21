@@ -68,6 +68,36 @@ func (sp *StatusPoller) poll() {
 		// Capture pane (plain text, no ANSI)
 		paneText, err := tmux.CapturePane(sp.bot.config.TmuxSessionName, windowID, false)
 		if err != nil {
+			if tmux.IsWindowDead(err) {
+				log.Printf("Status poller: window %s is dead, cleaning up", windowID)
+				// Save chat IDs before cleanup removes them
+				type notifyTarget struct {
+					chatID   int64
+					threadID int
+				}
+				var targets []notifyTarget
+				for _, ut := range users {
+					if cid, ok := sp.bot.state.GetGroupChatID(ut.UserID, ut.ThreadID); ok {
+						tid, _ := strconv.Atoi(ut.ThreadID)
+						targets = append(targets, notifyTarget{cid, tid})
+					}
+				}
+				// Clean up UI states for all users on this window
+				for _, ut := range users {
+					uid, _ := strconv.ParseInt(ut.UserID, 10, 64)
+					tid, _ := strconv.Atoi(ut.ThreadID)
+					cancelBashCapture(uid, tid)
+					clearInteractiveUI(uid, tid)
+					// Clear cached status
+					sp.mu.Lock()
+					delete(sp.lastStatus, statusKey{uid, tid})
+					sp.mu.Unlock()
+				}
+				cleanupDeadWindow(sp.bot, windowID)
+				for _, t := range targets {
+					sp.bot.reply(t.chatID, t.threadID, "Session died. Send a message to restart.")
+				}
+			}
 			continue
 		}
 

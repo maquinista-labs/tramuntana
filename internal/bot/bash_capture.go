@@ -85,7 +85,11 @@ func (b *Bot) captureBashOutput(ctx context.Context, userID int64, chatID int64,
 
 		paneText, err := tmux.CapturePane(b.config.TmuxSessionName, windowID, false)
 		if err != nil {
-			log.Printf("Bash capture: error capturing pane: %v", err)
+			if tmux.IsWindowDead(err) {
+				log.Printf("Bash capture: window %s is dead, stopping capture", windowID)
+			} else {
+				log.Printf("Bash capture: error capturing pane: %v", err)
+			}
 			return
 		}
 

@@ -80,6 +80,10 @@ func (b *Bot) handleScreenshotCommand(msg *tgbotapi.Message) {
 
 	paneText, err := tmux.CapturePane(b.config.TmuxSessionName, windowID, true)
 	if err != nil {
+		if tmux.IsWindowDead(err) {
+			b.handleDeadWindow(msg, windowID, "")
+			return
+		}
 		log.Printf("Error capturing pane for screenshot: %v", err)
 		b.reply(chatID, threadID, "Error: failed to capture pane.")
 		return
@@ -129,7 +133,11 @@ func (b *Bot) handleScreenshotCB(cq *tgbotapi.CallbackQuery) {
 
 	// Send key to tmux
 	if err := tmux.SendSpecialKey(b.config.TmuxSessionName, windowID, tmuxKey); err != nil {
-		log.Printf("Error sending key %s to %s: %v", tmuxKey, windowID, err)
+		if tmux.IsWindowDead(err) {
+			log.Printf("Screenshot callback: window %s is dead", windowID)
+		} else {
+			log.Printf("Error sending key %s to %s: %v", tmuxKey, windowID, err)
+		}
 		return
 	}
 
@@ -144,7 +152,11 @@ func (b *Bot) handleScreenshotCB(cq *tgbotapi.CallbackQuery) {
 func (b *Bot) refreshScreenshot(cq *tgbotapi.CallbackQuery, windowID string) {
 	paneText, err := tmux.CapturePane(b.config.TmuxSessionName, windowID, true)
 	if err != nil {
-		log.Printf("Error capturing pane for refresh: %v", err)
+		if tmux.IsWindowDead(err) {
+			log.Printf("Screenshot refresh: window %s is dead", windowID)
+		} else {
+			log.Printf("Error capturing pane for refresh: %v", err)
+		}
 		return
 	}
 

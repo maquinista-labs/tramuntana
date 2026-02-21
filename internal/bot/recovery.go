@@ -3,7 +3,9 @@ package bot
 import (
 	"log"
 	"path/filepath"
+	"strconv"
 
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/otaviocarvalho/tramuntana/internal/state"
 	"github.com/otaviocarvalho/tramuntana/internal/tmux"
 )
@@ -118,7 +120,108 @@ func reResolveWindow(s *state.State, oldID, newID string) {
 	}
 }
 
+// handleDeadWindow detects a dead tmux window, cleans up state, and auto-recreates
+// a new session in the same directory. Returns true if recovery was attempted.
+// pendingText is optionally sent to the new session after creation.
+func (b *Bot) handleDeadWindow(msg *tgbotapi.Message, windowID, pendingText string) bool {
+	userID := strconv.FormatInt(msg.From.ID, 10)
+	threadID := strconv.Itoa(getThreadID(msg))
+	chatID := msg.Chat.ID
+	threadIDInt := getThreadID(msg)
+
+	// Check if binding still exists — the status poller may have already cleaned up
+	if _, bound := b.state.GetWindowForThread(userID, threadID); !bound {
+		log.Printf("Dead window %s: already cleaned up (race with poller), treating as unbound", windowID)
+		b.handleUnboundTopic(msg)
+		return true
+	}
+
+	// Ensure the whole tmux session still exists (handles full session death)
+	if err := tmux.EnsureSession(b.config.TmuxSessionName); err != nil {
+		log.Printf("Error re-creating tmux session: %v", err)
+	}
+
+	// Save info we need before cleanup
+	var cwd string
+	var projectBinding string
+	if ws, ok := b.state.GetWindowState(windowID); ok {
+		cwd = ws.CWD
+	}
+	if proj, ok := b.state.GetProject(threadID); ok {
+		projectBinding = proj
+	}
+
+	// Save GroupChatIDs for all users on this window (needed for re-binding)
+	type chatIDEntry struct {
+		userID   string
+		threadID string
+		chatID   int64
+	}
+	var savedChatIDs []chatIDEntry
+	for _, ut := range b.state.FindUsersForWindow(windowID) {
+		if cid, ok := b.state.GetGroupChatID(ut.UserID, ut.ThreadID); ok {
+			savedChatIDs = append(savedChatIDs, chatIDEntry{ut.UserID, ut.ThreadID, cid})
+		}
+	}
+
+	// Clean up all stale state for the dead window
+	cleanupDeadWindow(b, windowID)
+
+	// Clean up stale UI states that reference the dead window
+	cancelBashCapture(msg.From.ID, threadIDInt)
+	clearInteractiveUI(msg.From.ID, threadIDInt)
+	screenshotStatesMu.Lock()
+	delete(screenshotStates, screenshotKey(msg.From.ID, threadIDInt))
+	screenshotStatesMu.Unlock()
+
+	// Restore GroupChatIDs (cleanupDeadWindow removes them but we need them for new binding)
+	for _, entry := range savedChatIDs {
+		b.state.SetGroupChatID(entry.userID, entry.threadID, entry.chatID)
+	}
+	// Always ensure current user's chat ID is set (may not have been in savedChatIDs)
+	b.state.SetGroupChatID(userID, threadID, chatID)
+	b.saveState()
+
+	if cwd == "" {
+		// No CWD known — fall back to directory browser
+		log.Printf("Dead window %s: no CWD, falling back to directory browser", windowID)
+		b.reply(chatID, threadIDInt, "Session died. Pick a directory to restart.")
+		b.handleUnboundTopic(msg)
+		return true
+	}
+
+	// Auto-recreate in the same directory
+	log.Printf("Dead window %s: auto-recreating in %s", windowID, cwd)
+	b.reply(chatID, threadIDInt, "Session died. Restarting...")
+
+	result, err := b.createWindowForDir(cwd, msg.From.ID, chatID, threadIDInt)
+	if err != nil {
+		log.Printf("Error auto-recreating window in %s: %v", cwd, err)
+		b.reply(chatID, threadIDInt, "Failed to restart. Send a message to try again.")
+		return true
+	}
+
+	// Restore project binding
+	if projectBinding != "" {
+		b.state.BindProject(threadID, projectBinding)
+		b.saveState()
+	}
+
+	// Rename topic
+	b.renameForumTopic(chatID, threadIDInt, result.WindowName)
+
+	// Send pending text to new session
+	if pendingText != "" {
+		if err := tmux.SendKeysWithDelay(b.config.TmuxSessionName, result.WindowID, pendingText, 500); err != nil {
+			log.Printf("Error sending pending text after recovery: %v", err)
+		}
+	}
+
+	return true
+}
+
 // cleanupDeadWindow removes all state for a dead window.
+// Idempotent — safe to call multiple times or concurrently.
 func cleanupDeadWindow(b *Bot, windowID string) {
 	// Find and unbind all threads
 	users := b.state.FindUsersForWindow(windowID)
@@ -130,15 +233,16 @@ func cleanupDeadWindow(b *Bot, windowID string) {
 	// Remove window state and display name
 	b.state.RemoveWindowState(windowID)
 
-	// Remove monitor state
-	if b.monitorState != nil {
-		sessionMapPath := filepath.Join(b.config.TramuntanaDir, "session_map.json")
-		sm, err := state.LoadSessionMap(sessionMapPath)
-		if err == nil {
-			for key := range sm {
-				if windowIDFromKey(key) == windowID {
+	// Remove monitor state and session_map entries
+	sessionMapPath := filepath.Join(b.config.TramuntanaDir, "session_map.json")
+	sm, err := state.LoadSessionMap(sessionMapPath)
+	if err == nil {
+		for key := range sm {
+			if windowIDFromKey(key) == windowID {
+				if b.monitorState != nil {
 					b.monitorState.RemoveSession(key)
 				}
+				state.RemoveSessionMapEntry(sessionMapPath, key)
 			}
 		}
 	}

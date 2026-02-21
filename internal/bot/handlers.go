@@ -45,6 +45,10 @@ func (b *Bot) handleTextMessage(msg *tgbotapi.Message) {
 
 	// Send text to tmux with 500ms delay before Enter
 	if err := tmux.SendKeysWithDelay(b.config.TmuxSessionName, windowID, text, 500); err != nil {
+		if tmux.IsWindowDead(err) {
+			b.handleDeadWindow(msg, windowID, text)
+			return
+		}
 		log.Printf("Error sending keys to %s: %v", windowID, err)
 		b.reply(chatID, getThreadID(msg), "Error: failed to send to Claude session.")
 	}
@@ -88,6 +92,10 @@ func (b *Bot) handleBashCommand(msg *tgbotapi.Message, windowID, text string) {
 
 	// Send ! first to enter bash mode
 	if err := tmux.SendKeys(session, windowID, "!"); err != nil {
+		if tmux.IsWindowDead(err) {
+			b.handleDeadWindow(msg, windowID, text)
+			return
+		}
 		log.Printf("Error sending ! to %s: %v", windowID, err)
 		return
 	}
@@ -98,6 +106,10 @@ func (b *Bot) handleBashCommand(msg *tgbotapi.Message, windowID, text string) {
 	// Send the rest of the command (without !) + Enter
 	cmd := text[1:]
 	if err := tmux.SendKeysWithDelay(session, windowID, cmd, 500); err != nil {
+		if tmux.IsWindowDead(err) {
+			b.handleDeadWindow(msg, windowID, text)
+			return
+		}
 		log.Printf("Error sending bash command to %s: %v", windowID, err)
 		return
 	}

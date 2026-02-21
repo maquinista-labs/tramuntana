@@ -34,6 +34,10 @@ var interactive = &interactiveState{
 func (b *Bot) handleInteractiveUI(chatID int64, threadID int, userID int64, windowID string) {
 	paneText, err := tmux.CapturePane(b.config.TmuxSessionName, windowID, false)
 	if err != nil {
+		if tmux.IsWindowDead(err) {
+			log.Printf("Interactive UI: window %s is dead", windowID)
+			clearInteractiveUI(userID, threadID)
+		}
 		return
 	}
 
@@ -98,30 +102,43 @@ func (b *Bot) handleInteractiveCallback(cq *tgbotapi.CallbackQuery) {
 	data := cq.Data
 	session := b.config.TmuxSessionName
 
+	sendKey := func(key string) error {
+		return tmux.SendSpecialKey(session, windowID, key)
+	}
+
+	var sendErr error
 	switch {
 	case data == "nav_up":
-		tmux.SendSpecialKey(session, windowID, "Up")
+		sendErr = sendKey("Up")
 	case data == "nav_down":
-		tmux.SendSpecialKey(session, windowID, "Down")
+		sendErr = sendKey("Down")
 	case data == "nav_left":
-		tmux.SendSpecialKey(session, windowID, "Left")
+		sendErr = sendKey("Left")
 	case data == "nav_right":
-		tmux.SendSpecialKey(session, windowID, "Right")
+		sendErr = sendKey("Right")
 	case data == "nav_space":
-		tmux.SendSpecialKey(session, windowID, "Space")
+		sendErr = sendKey("Space")
 	case data == "nav_tab":
-		tmux.SendSpecialKey(session, windowID, "Tab")
+		sendErr = sendKey("Tab")
 	case data == "nav_esc":
-		tmux.SendSpecialKey(session, windowID, "Escape")
+		sendErr = sendKey("Escape")
 		clearInteractiveUI(userID, threadID)
 		return
 	case data == "nav_enter":
-		tmux.SendSpecialKey(session, windowID, "Enter")
+		sendErr = sendKey("Enter")
 		clearInteractiveUI(userID, threadID)
 		return
 	case data == "nav_refresh":
 		// Just refresh, no key sent
 	default:
+		return
+	}
+
+	if sendErr != nil {
+		if tmux.IsWindowDead(sendErr) {
+			log.Printf("Interactive callback: window %s is dead", windowID)
+			clearInteractiveUI(userID, threadID)
+		}
 		return
 	}
 

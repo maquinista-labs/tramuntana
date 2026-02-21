@@ -59,6 +59,10 @@ func (b *Bot) forwardCommand(msg *tgbotapi.Message) {
 
 	cmdText := "/" + msg.Command()
 	if err := tmux.SendKeysWithDelay(b.config.TmuxSessionName, windowID, cmdText, 500); err != nil {
+		if tmux.IsWindowDead(err) {
+			b.handleDeadWindow(msg, windowID, "")
+			return
+		}
 		log.Printf("Error forwarding command %s to %s: %v", cmdText, windowID, err)
 		b.reply(msg.Chat.ID, getThreadID(msg), "Error: failed to send command.")
 		return
@@ -98,6 +102,10 @@ func (b *Bot) handleEsc(msg *tgbotapi.Message) {
 	}
 
 	if err := tmux.SendSpecialKey(b.config.TmuxSessionName, windowID, "Escape"); err != nil {
+		if tmux.IsWindowDead(err) {
+			b.handleDeadWindow(msg, windowID, "")
+			return
+		}
 		log.Printf("Error sending Escape to %s: %v", windowID, err)
 		b.reply(msg.Chat.ID, getThreadID(msg), "Error: failed to send Escape.")
 	}

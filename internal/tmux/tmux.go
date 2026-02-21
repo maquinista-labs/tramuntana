@@ -152,18 +152,27 @@ func CapturePane(session, windowID string, withAnsi bool) (string, error) {
 	return string(out), nil
 }
 
+// IsWindowDead checks if a tmux error indicates the target window/session no longer exists.
+func IsWindowDead(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not found") ||
+		strings.Contains(msg, "no such") ||
+		strings.Contains(msg, "can't find")
+}
+
 // KillWindow kills a tmux window. Returns nil if window doesn't exist.
 func KillWindow(session, windowID string) error {
 	target := session + ":" + windowID
 	cmd := exec.Command("tmux", "kill-window", "-t", target)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		// Ignore error if window is already dead
-		outStr := string(out)
-		if strings.Contains(outStr, "not found") || strings.Contains(outStr, "no such") ||
-			strings.Contains(outStr, "can't find") {
+		wrapped := fmt.Errorf("killing window %s: %s: %w", target, string(out), err)
+		if IsWindowDead(wrapped) {
 			return nil
 		}
-		return fmt.Errorf("killing window %s: %s: %w", target, outStr, err)
+		return wrapped
 	}
 	return nil
 }

@@ -99,6 +99,10 @@ func (b *Bot) handlePickCommand(msg *tgbotapi.Message) {
 	}
 
 	if err := b.sendPromptToTmux(windowID, prompt); err != nil {
+		if tmux.IsWindowDead(err) {
+			b.handleDeadWindow(msg, windowID, "")
+			return
+		}
 		log.Printf("Error sending prompt to tmux: %v", err)
 		b.reply(chatID, threadID, "Error: failed to send prompt.")
 		return
@@ -133,6 +137,10 @@ func (b *Bot) handleAutoCommand(msg *tgbotapi.Message) {
 	}
 
 	if err := b.sendPromptToTmux(windowID, prompt); err != nil {
+		if tmux.IsWindowDead(err) {
+			b.handleDeadWindow(msg, windowID, "")
+			return
+		}
 		log.Printf("Error sending prompt to tmux: %v", err)
 		b.reply(chatID, threadID, "Error: failed to send prompt.")
 		return
@@ -166,6 +174,10 @@ func (b *Bot) handleBatchCommand(msg *tgbotapi.Message) {
 	}
 
 	if err := b.sendPromptToTmux(windowID, prompt); err != nil {
+		if tmux.IsWindowDead(err) {
+			b.handleDeadWindow(msg, windowID, "")
+			return
+		}
 		log.Printf("Error sending prompt to tmux: %v", err)
 		b.reply(chatID, threadID, "Error: failed to send prompt.")
 		return
