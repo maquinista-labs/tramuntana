@@ -31,6 +31,13 @@ func ToMarkdownV2(text string) string {
 	var b strings.Builder
 	for _, seg := range segments {
 		if seg.isQuote {
+			// Blockquotes must start on a new line
+			if b.Len() > 0 {
+				s := b.String()
+				if s[len(s)-1] != '\n' {
+					b.WriteString("\n")
+				}
+			}
 			b.WriteString(renderExpandableQuote(seg.content))
 		} else {
 			b.WriteString(convertWithGoldmark(seg.content, false))
