@@ -6,15 +6,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/otaviocarvalho/tramuntana/internal/git"
 	"github.com/otaviocarvalho/tramuntana/internal/state"
-	"github.com/otaviocarvalho/tramuntana/internal/tmux"
 )
 
-// handlePickwCommand creates a worktree + forum topic + Claude session for a task.
+// handlePickwCommand creates a worktree and sends a task prompt to the existing session.
 // Supports: /pickw (shows task list), /pickw <full-id>, /pickw <partial-id>
 func (b *Bot) handlePickwCommand(msg *tgbotapi.Message) {
 	partialID := strings.TrimSpace(msg.CommandArguments())
@@ -28,6 +26,9 @@ func (b *Bot) handlePickwCommand(msg *tgbotapi.Message) {
 }
 
 // executePickwTask runs the /pickw logic for a resolved task ID.
+// Unlike the old implementation, this reuses the existing Claude session
+// in the current topic instead of creating a new topic/window/process.
+// It only adds git isolation via a worktree.
 func (b *Bot) executePickwTask(chatID int64, threadID int, userID int64, taskID string) {
 	threadIDStr := strconv.Itoa(threadID)
 	userIDStr := strconv.FormatInt(userID, 10)
@@ -60,32 +61,17 @@ func (b *Bot) executePickwTask(chatID int64, threadID int, userID int64, taskID 
 		return
 	}
 
-	topicName := fmt.Sprintf("%s [%s]", taskID, project)
-	newThreadID, err := b.createForumTopic(chatID, topicName)
-	if err != nil {
+	// Resolve existing window for this topic (like /pick)
+	windowID, bound := b.state.GetWindowForThread(userIDStr, threadIDStr)
+	if !bound {
 		git.WorktreeRemove(repoRoot, worktreeDir)
 		git.DeleteBranch(repoRoot, branch)
-		b.reply(chatID, threadID, fmt.Sprintf("Error creating topic: %v", err))
+		b.reply(chatID, threadID, "Topic not bound to a session.")
 		return
 	}
 
-	env := b.buildMinuanoEnv(fmt.Sprintf("%s-%s", project, taskID))
-	windowID, err := tmux.NewWindow(b.config.TmuxSessionName, taskID, worktreeDir, b.config.ClaudeCommand, env)
-	if err != nil {
-		git.WorktreeRemove(repoRoot, worktreeDir)
-		git.DeleteBranch(repoRoot, branch)
-		b.reply(chatID, threadID, fmt.Sprintf("Error creating window: %v", err))
-		return
-	}
-
-	b.waitForSessionMap(windowID)
-
-	newThreadIDStr := strconv.Itoa(newThreadID)
-	b.state.BindThread(userIDStr, newThreadIDStr, windowID)
-	b.state.SetGroupChatID(userIDStr, newThreadIDStr, chatID)
-	b.state.BindProject(newThreadIDStr, project)
-
-	b.state.SetWorktreeInfo(newThreadIDStr, state.WorktreeInfo{
+	// Store worktree info against current thread
+	b.state.SetWorktreeInfo(threadIDStr, state.WorktreeInfo{
 		WorktreeDir: worktreeDir,
 		Branch:      branch,
 		RepoRoot:    repoRoot,
@@ -94,21 +80,29 @@ func (b *Bot) executePickwTask(chatID int64, threadID int, userID int64, taskID 
 	})
 	b.saveState()
 
+	// Generate task prompt
 	prompt, err := b.minuanoBridge.PromptSingle(taskID)
 	if err != nil {
 		log.Printf("Error generating prompt for %s: %v", taskID, err)
-		b.reply(chatID, newThreadID, fmt.Sprintf("Worktree ready but failed to generate prompt: %v", err))
-		b.reply(chatID, threadID, fmt.Sprintf("Worktree topic created for %s (branch: %s). Prompt generation failed.", taskID, branch))
+		b.reply(chatID, threadID, fmt.Sprintf("Worktree ready but failed to generate prompt: %v", err))
 		return
 	}
 
-	time.Sleep(2 * time.Second)
-	if err := b.sendPromptToTmux(windowID, prompt); err != nil {
-		log.Printf("Error sending prompt to worktree session: %v", err)
-		b.reply(chatID, newThreadID, "Worktree ready but failed to send prompt.")
+	// Wrap prompt with worktree instructions
+	wrappedPrompt := fmt.Sprintf(
+		"IMPORTANT: Work in the git worktree at %s (branch: %s). "+
+			"cd to that directory before doing anything. "+
+			"Make all changes and commits there, NOT in the main repo.\n\n%s",
+		worktreeDir, branch, prompt,
+	)
+
+	if err := b.sendPromptToTmux(windowID, wrappedPrompt); err != nil {
+		log.Printf("Error sending prompt to tmux: %v", err)
+		b.reply(chatID, threadID, "Error: failed to send prompt.")
+		return
 	}
 
-	b.reply(chatID, threadID, fmt.Sprintf("Worktree topic created for %s (branch: %s)", taskID, branch))
+	b.reply(chatID, threadID, fmt.Sprintf("Working on task %s in worktree (branch: %s)", taskID, branch))
 }
 
 // getRepoRoot returns the git repo root for the current window's CWD.
@@ -140,25 +134,3 @@ func (b *Bot) getRepoRoot(userIDStr, threadIDStr string) (string, error) {
 	return "", fmt.Errorf("git rev-parse --show-toplevel in %s: not a git repository", ws.CWD)
 }
 
-// waitForSessionMap polls for a session_map entry matching the given window ID.
-func (b *Bot) waitForSessionMap(windowID string) {
-	sessionMapPath := filepath.Join(b.config.TramuntanaDir, "session_map.json")
-	for i := 0; i < 10; i++ {
-		time.Sleep(500 * time.Millisecond)
-		sm, err := state.LoadSessionMap(sessionMapPath)
-		if err != nil {
-			continue
-		}
-		for key, entry := range sm {
-			if strings.HasSuffix(key, ":"+windowID) {
-				b.state.SetWindowState(windowID, state.WindowState{
-					SessionID:  entry.SessionID,
-					CWD:        entry.CWD,
-					WindowName: entry.WindowName,
-				})
-				b.state.SetWindowDisplayName(windowID, entry.WindowName)
-				return
-			}
-		}
-	}
-}
