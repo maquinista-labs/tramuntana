@@ -146,7 +146,7 @@ func (b *Bot) processTaskPickerCallback(cq *tgbotapi.CallbackQuery) {
 		return
 	}
 
-	// Parse: tpick_pick:<taskID> or tpick_pickw:<taskID>
+	// Parse: tpick_pick:<taskID>, tpick_pickw:<taskID>, or tpick_delete:<taskID>
 	var mode, taskID string
 	if strings.HasPrefix(data, "tpick_pick:") {
 		mode = "pick"
@@ -154,6 +154,9 @@ func (b *Bot) processTaskPickerCallback(cq *tgbotapi.CallbackQuery) {
 	} else if strings.HasPrefix(data, "tpick_pickw:") {
 		mode = "pickw"
 		taskID = data[len("tpick_pickw:"):]
+	} else if strings.HasPrefix(data, "tpick_delete:") {
+		mode = "delete"
+		taskID = data[len("tpick_delete:"):]
 	} else {
 		log.Printf("Unknown task picker callback: %s", data)
 		return
@@ -181,10 +184,22 @@ func (b *Bot) processTaskPickerCallback(cq *tgbotapi.CallbackQuery) {
 	chatID := cq.Message.Chat.ID
 	threadID := getThreadID(cq.Message)
 
-	if mode == "pick" {
+	switch mode {
+	case "pick":
 		b.executePickTask(chatID, threadID, cq.From.ID, taskID)
-	} else {
+	case "pickw":
 		b.executePickwTask(chatID, threadID, cq.From.ID, taskID)
+	case "delete":
+		var title string
+		if ok {
+			for _, t := range tps.Tasks {
+				if t.ID == taskID {
+					title = t.Title
+					break
+				}
+			}
+		}
+		b.executeDeleteTask(chatID, threadID, taskID, title)
 	}
 }
 

@@ -38,6 +38,7 @@ func buildMenuKeyboard() tgbotapi.InlineKeyboardMarkup {
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Add", "menu_p_add"),
+			tgbotapi.NewInlineKeyboardButtonData("Delete", "menu_p_delete"),
 			tgbotapi.NewInlineKeyboardButtonData("History", "menu_p_history"),
 		),
 		// Task Execution header
@@ -78,6 +79,8 @@ func (b *Bot) handleMenuCallback(cq *tgbotapi.CallbackQuery) {
 		b.handleTasks(msg)
 	case "p_add":
 		b.handleAdd(msg)
+	case "p_delete":
+		b.handleDeleteCommand(msg)
 	case "p_history":
 		b.handleHistory(msg)
 	case "t_pick":

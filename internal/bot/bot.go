@@ -92,6 +92,7 @@ func (b *Bot) registerCommands() {
 		tgbotapi.BotCommand{Command: "p_bind", Description: "Bind a Minuano project to this topic"},
 		tgbotapi.BotCommand{Command: "p_tasks", Description: "List tasks for the bound project"},
 		tgbotapi.BotCommand{Command: "p_add", Description: "Create a new Minuano task"},
+		tgbotapi.BotCommand{Command: "p_delete", Description: "Delete a Minuano task"},
 		tgbotapi.BotCommand{Command: "p_history", Description: "Message history for this topic"},
 		tgbotapi.BotCommand{Command: "t_pick", Description: "Assign a specific task to Claude"},
 		tgbotapi.BotCommand{Command: "t_pickw", Description: "Pick task in isolated worktree"},

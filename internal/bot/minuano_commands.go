@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/otaviocarvalho/tramuntana/internal/minuano"
 	"github.com/otaviocarvalho/tramuntana/internal/tmux"
 )
 
@@ -244,6 +245,88 @@ func (b *Bot) executeBatch(msg *tgbotapi.Message, args []string) {
 	}
 
 	b.reply(chatID, threadID, fmt.Sprintf("Working on batch: %s...", strings.Join(args, ", ")))
+}
+
+// handleDeleteCommand deletes a Minuano task.
+func (b *Bot) handleDeleteCommand(msg *tgbotapi.Message) {
+	chatID := msg.Chat.ID
+	threadID := getThreadID(msg)
+	threadIDStr := strconv.Itoa(threadID)
+
+	project, ok := b.state.GetProject(threadIDStr)
+	if !ok {
+		b.reply(chatID, threadID, "No project bound. Use /p_bind <name> first.")
+		return
+	}
+
+	partialID := strings.TrimSpace(msg.CommandArguments())
+	if partialID == "" {
+		// Show task picker for deletion
+		tasks, err := b.minuanoBridge.Status(project)
+		if err != nil {
+			log.Printf("Error getting tasks for project %s: %v", project, err)
+			b.reply(chatID, threadID, "Error: failed to get tasks.")
+			return
+		}
+		b.showTaskPicker(msg, tasks, "delete", project)
+		return
+	}
+
+	task, ok := b.resolveTaskIDAll(msg, partialID, project)
+	if !ok {
+		return
+	}
+
+	b.executeDeleteTask(chatID, threadID, task.ID, task.Title)
+}
+
+// resolveTaskIDAll resolves a partial task ID against all tasks (not just actionable).
+func (b *Bot) resolveTaskIDAll(msg *tgbotapi.Message, partialID, project string) (minuano.Task, bool) {
+	chatID := msg.Chat.ID
+	threadID := getThreadID(msg)
+
+	tasks, err := b.minuanoBridge.Status(project)
+	if err != nil {
+		log.Printf("Error getting tasks for project %s: %v", project, err)
+		b.reply(chatID, threadID, "Error: failed to get tasks.")
+		return minuano.Task{}, false
+	}
+
+	// Exact match
+	for _, t := range tasks {
+		if t.ID == partialID {
+			return t, true
+		}
+	}
+
+	// Prefix match
+	var matches []minuano.Task
+	for _, t := range tasks {
+		if strings.HasPrefix(t.ID, partialID) {
+			matches = append(matches, t)
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		b.reply(chatID, threadID, fmt.Sprintf("No task matching '%s'.", partialID))
+		return minuano.Task{}, false
+	case 1:
+		return matches[0], true
+	default:
+		b.showTaskPicker(msg, matches, "delete", project)
+		return minuano.Task{}, false
+	}
+}
+
+// executeDeleteTask deletes a task by ID and sends confirmation.
+func (b *Bot) executeDeleteTask(chatID int64, threadID int, taskID, title string) {
+	if err := b.minuanoBridge.Delete(taskID); err != nil {
+		log.Printf("Error deleting task %s: %v", taskID, err)
+		b.reply(chatID, threadID, fmt.Sprintf("Error: %v", err))
+		return
+	}
+	b.reply(chatID, threadID, fmt.Sprintf("Deleted task: %s — %s", taskID, title))
 }
 
 // sendPromptToTmux writes a prompt to a temp file and sends a reference to tmux.

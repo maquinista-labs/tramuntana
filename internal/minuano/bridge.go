@@ -146,6 +146,39 @@ func (b *Bridge) PromptBatch(taskIDs ...string) (string, error) {
 	return b.Prompt("batch", taskIDs...)
 }
 
+// Delete removes a task by ID using a direct SQL delete via psql.
+func (b *Bridge) Delete(taskID string) error {
+	if b.DBFlag == "" {
+		return fmt.Errorf("DATABASE_URL not configured")
+	}
+
+	cmd := exec.Command("psql", b.DBFlag, "-c",
+		fmt.Sprintf("DELETE FROM tasks WHERE id = '%s'", sanitizeID(taskID)))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("deleting task %s: %s", taskID, strings.TrimSpace(string(out)))
+	}
+
+	// psql outputs "DELETE N" — check that exactly 1 row was deleted
+	output := strings.TrimSpace(string(out))
+	if output != "DELETE 1" {
+		return fmt.Errorf("task %s not found", taskID)
+	}
+
+	return nil
+}
+
+// sanitizeID strips everything except alphanumerics and hyphens from a task ID.
+func sanitizeID(id string) string {
+	var b strings.Builder
+	for _, r := range id {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 // AddResult holds the output of a successful task creation.
 type AddResult struct {
 	ID    string
