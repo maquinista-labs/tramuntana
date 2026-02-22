@@ -15,32 +15,35 @@ import (
 )
 
 // handlePickwCommand creates a worktree + forum topic + Claude session for a task.
+// Supports: /pickw (shows task list), /pickw <full-id>, /pickw <partial-id>
 func (b *Bot) handlePickwCommand(msg *tgbotapi.Message) {
-	chatID := msg.Chat.ID
-	threadID := getThreadID(msg)
-	threadIDStr := strconv.Itoa(threadID)
+	partialID := strings.TrimSpace(msg.CommandArguments())
 
-	taskID := strings.TrimSpace(msg.CommandArguments())
-	if taskID == "" {
-		b.reply(chatID, threadID, "Usage: /pickw <task-id>")
-		return
+	task, ok := b.resolveTaskID(msg, partialID, "pickw")
+	if !ok {
+		return // picker shown or error sent
 	}
 
-	// Require a project binding on the current topic
+	b.executePickwTask(msg.Chat.ID, getThreadID(msg), msg.From.ID, task.ID)
+}
+
+// executePickwTask runs the /pickw logic for a resolved task ID.
+func (b *Bot) executePickwTask(chatID int64, threadID int, userID int64, taskID string) {
+	threadIDStr := strconv.Itoa(threadID)
+	userIDStr := strconv.FormatInt(userID, 10)
+
 	project, ok := b.state.GetProject(threadIDStr)
 	if !ok {
 		b.reply(chatID, threadID, "No project bound. Use /project <name> first.")
 		return
 	}
 
-	// Get repo root from current window's CWD
-	repoRoot, err := b.getRepoRoot(msg)
+	repoRoot, err := b.getRepoRoot(userIDStr, threadIDStr)
 	if err != nil {
 		b.reply(chatID, threadID, fmt.Sprintf("Error: %v", err))
 		return
 	}
 
-	// Get current branch as base
 	baseBranch, err := git.CurrentBranch(repoRoot)
 	if err != nil {
 		b.reply(chatID, threadID, fmt.Sprintf("Error getting branch: %v", err))
@@ -52,24 +55,20 @@ func (b *Bot) handlePickwCommand(msg *tgbotapi.Message) {
 
 	b.reply(chatID, threadID, fmt.Sprintf("Creating worktree for %s...", taskID))
 
-	// Create git worktree with new branch
 	if err := git.WorktreeAdd(repoRoot, worktreeDir, branch); err != nil {
 		b.reply(chatID, threadID, fmt.Sprintf("Error creating worktree: %v", err))
 		return
 	}
 
-	// Create forum topic
 	topicName := fmt.Sprintf("%s [%s]", taskID, project)
 	newThreadID, err := b.createForumTopic(chatID, topicName)
 	if err != nil {
-		// Clean up on failure
 		git.WorktreeRemove(repoRoot, worktreeDir)
 		git.DeleteBranch(repoRoot, branch)
 		b.reply(chatID, threadID, fmt.Sprintf("Error creating topic: %v", err))
 		return
 	}
 
-	// Create tmux window in worktree dir
 	env := b.buildMinuanoEnv(fmt.Sprintf("%s-%s", project, taskID))
 	windowID, err := tmux.NewWindow(b.config.TmuxSessionName, taskID, worktreeDir, b.config.ClaudeCommand, env)
 	if err != nil {
@@ -79,19 +78,13 @@ func (b *Bot) handlePickwCommand(msg *tgbotapi.Message) {
 		return
 	}
 
-	// Wait for session_map entry (up to 5s)
 	b.waitForSessionMap(windowID)
 
-	// Bind the new thread to the window
-	userIDStr := strconv.FormatInt(msg.From.ID, 10)
 	newThreadIDStr := strconv.Itoa(newThreadID)
 	b.state.BindThread(userIDStr, newThreadIDStr, windowID)
 	b.state.SetGroupChatID(userIDStr, newThreadIDStr, chatID)
-
-	// Propagate project binding to the new topic
 	b.state.BindProject(newThreadIDStr, project)
 
-	// Store worktree info
 	b.state.SetWorktreeInfo(newThreadIDStr, state.WorktreeInfo{
 		WorktreeDir: worktreeDir,
 		Branch:      branch,
@@ -101,7 +94,6 @@ func (b *Bot) handlePickwCommand(msg *tgbotapi.Message) {
 	})
 	b.saveState()
 
-	// Generate and send task prompt
 	prompt, err := b.minuanoBridge.PromptSingle(taskID)
 	if err != nil {
 		log.Printf("Error generating prompt for %s: %v", taskID, err)
@@ -110,7 +102,6 @@ func (b *Bot) handlePickwCommand(msg *tgbotapi.Message) {
 		return
 	}
 
-	// Wait for Claude to start, then send prompt
 	time.Sleep(2 * time.Second)
 	if err := b.sendPromptToTmux(windowID, prompt); err != nil {
 		log.Printf("Error sending prompt to worktree session: %v", err)
@@ -122,8 +113,8 @@ func (b *Bot) handlePickwCommand(msg *tgbotapi.Message) {
 
 // getRepoRoot returns the git repo root for the current window's CWD.
 // If the CWD itself is not a git repo, it tries CWD/<project> as a fallback.
-func (b *Bot) getRepoRoot(msg *tgbotapi.Message) (string, error) {
-	windowID, bound := b.resolveWindow(msg)
+func (b *Bot) getRepoRoot(userIDStr, threadIDStr string) (string, error) {
+	windowID, bound := b.state.GetWindowForThread(userIDStr, threadIDStr)
 	if !bound {
 		return "", fmt.Errorf("topic not bound to a session")
 	}
@@ -139,7 +130,6 @@ func (b *Bot) getRepoRoot(msg *tgbotapi.Message) (string, error) {
 	}
 
 	// Fallback: try CWD/<project> (e.g. /home/user/code/terminal-game)
-	threadIDStr := strconv.Itoa(getThreadID(msg))
 	if project, ok := b.state.GetProject(threadIDStr); ok {
 		projectDir := filepath.Join(ws.CWD, project)
 		if root, err := git.RepoRoot(projectDir); err == nil {

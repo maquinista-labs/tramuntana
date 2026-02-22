@@ -34,7 +34,7 @@ func (b *Bot) handleProjectCommand(msg *tgbotapi.Message) {
 	b.reply(chatID, threadID, fmt.Sprintf("Bound to project: %s", projectName))
 }
 
-// handleTasksCommand shows ready tasks for the bound project.
+// handleTasksCommand shows tasks for the bound project with clickable pick buttons.
 func (b *Bot) handleTasksCommand(msg *tgbotapi.Message) {
 	chatID := msg.Chat.ID
 	threadID := getThreadID(msg)
@@ -58,6 +58,7 @@ func (b *Bot) handleTasksCommand(msg *tgbotapi.Message) {
 		return
 	}
 
+	// Build text summary
 	var lines []string
 	lines = append(lines, fmt.Sprintf("Tasks [%s]:", project))
 	for _, t := range tasks {
@@ -70,18 +71,51 @@ func (b *Bot) handleTasksCommand(msg *tgbotapi.Message) {
 			sym, t.ID, t.Title, t.Status, claimedBy))
 	}
 
-	b.reply(chatID, threadID, strings.Join(lines, "\n"))
+	// Add inline keyboard buttons for actionable tasks
+	var rows [][]tgbotapi.InlineKeyboardButton
+	for _, t := range tasks {
+		if t.Status != "ready" && t.Status != "pending" {
+			continue
+		}
+		label := fmt.Sprintf("%s %s", statusSymbol(t.Status), truncate(t.Title, 35))
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(label, "tpick_pick:"+t.ID),
+		))
+	}
+
+	if len(rows) > 0 {
+		kb := tgbotapi.InlineKeyboardMarkup{InlineKeyboard: rows}
+		userID := msg.From.ID
+		sent, err := b.sendMessageWithKeyboard(chatID, threadID, strings.Join(lines, "\n"), kb)
+		if err != nil {
+			log.Printf("Error sending tasks with keyboard: %v", err)
+			return
+		}
+		b.mu.Lock()
+		b.taskPickerStates[userID] = &taskPickerState{
+			Tasks:     tasks,
+			Mode:      "pick",
+			ChatID:    chatID,
+			ThreadID:  threadID,
+			MessageID: sent.MessageID,
+		}
+		b.mu.Unlock()
+	} else {
+		b.reply(chatID, threadID, strings.Join(lines, "\n"))
+	}
 }
 
 // handlePickCommand sends a single-task prompt to Claude.
+// Supports: /pick (shows task list), /pick <full-id>, /pick <partial-id>
 func (b *Bot) handlePickCommand(msg *tgbotapi.Message) {
 	chatID := msg.Chat.ID
 	threadID := getThreadID(msg)
 
-	taskID := strings.TrimSpace(msg.CommandArguments())
-	if taskID == "" {
-		b.reply(chatID, threadID, "Usage: /pick <task-id>")
-		return
+	partialID := strings.TrimSpace(msg.CommandArguments())
+
+	task, ok := b.resolveTaskID(msg, partialID, "pick")
+	if !ok {
+		return // picker shown or error sent
 	}
 
 	windowID, bound := b.resolveWindow(msg)
@@ -90,10 +124,9 @@ func (b *Bot) handlePickCommand(msg *tgbotapi.Message) {
 		return
 	}
 
-	// Generate prompt via minuano CLI
-	prompt, err := b.minuanoBridge.PromptSingle(taskID)
+	prompt, err := b.minuanoBridge.PromptSingle(task.ID)
 	if err != nil {
-		log.Printf("Error generating single prompt for %s: %v", taskID, err)
+		log.Printf("Error generating single prompt for %s: %v", task.ID, err)
 		b.reply(chatID, threadID, fmt.Sprintf("Error: %v", err))
 		return
 	}
@@ -108,7 +141,7 @@ func (b *Bot) handlePickCommand(msg *tgbotapi.Message) {
 		return
 	}
 
-	b.reply(chatID, threadID, fmt.Sprintf("Working on task %s...", taskID))
+	b.reply(chatID, threadID, fmt.Sprintf("Working on task %s...", task.ID))
 }
 
 // handleAutoCommand sends a loop prompt for autonomous task processing.

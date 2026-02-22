@@ -31,6 +31,8 @@ type Bot struct {
 	fileBrowseStates map[int64]*FileBrowseState
 	// Per-user add-task wizard state
 	addTaskStates map[int64]*addTaskState
+	// Per-user task picker state (for /pick and /pickw without args)
+	taskPickerStates map[int64]*taskPickerState
 	// Monitor state (set by serve command when monitor is started)
 	monitorState *state.MonitorState
 	// Minuano CLI bridge
@@ -67,6 +69,7 @@ func New(cfg *config.Config) (*Bot, error) {
 		windowPickerStates: make(map[int64]*windowPickerState),
 		fileBrowseStates:   make(map[int64]*FileBrowseState),
 		addTaskStates:      make(map[int64]*addTaskState),
+		taskPickerStates:   make(map[int64]*taskPickerState),
 		minuanoBridge:      minuano.NewBridge(cfg.MinuanoBin, cfg.MinuanoDB),
 	}, nil
 }

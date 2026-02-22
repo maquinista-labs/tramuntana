@@ -24,7 +24,9 @@ func (b *Bot) handleMergeCommand(msg *tgbotapi.Message) {
 	}
 
 	// Get repo root from current window's CWD
-	repoRoot, err := b.getRepoRoot(msg)
+	userIDStr := strconv.FormatInt(msg.From.ID, 10)
+	threadIDStr := strconv.Itoa(threadID)
+	repoRoot, err := b.getRepoRoot(userIDStr, threadIDStr)
 	if err != nil {
 		b.reply(chatID, threadID, fmt.Sprintf("Error: %v", err))
 		return
