@@ -1,10 +1,15 @@
 package queue
 
 import (
+	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
+
+var retryAfterRe = regexp.MustCompile(`retry after (\d+)`)
 
 // FloodControl handles Telegram 429 rate limiting.
 type FloodControl struct {
@@ -25,13 +30,26 @@ func (fc *FloodControl) HandleError(chatID int64, err error) {
 		return
 	}
 	errStr := err.Error()
-	// Telegram 429 errors contain "Too Many Requests" and "retry after"
-	if strings.Contains(errStr, "Too Many Requests") || strings.Contains(errStr, "429") {
-		// Set a conservative 30-second flood ban
-		fc.mu.Lock()
-		fc.floodUntil[chatID] = time.Now().Add(30 * time.Second)
-		fc.mu.Unlock()
+	if !strings.Contains(errStr, "Too Many Requests") && !strings.Contains(errStr, "429") {
+		return
 	}
+
+	// Parse actual retry-after value, default to 30s
+	wait := 30 * time.Second
+	if m := retryAfterRe.FindStringSubmatch(errStr); len(m) == 2 {
+		if secs, err := strconv.Atoi(m[1]); err == nil && secs > 0 {
+			wait = time.Duration(secs)*time.Second + time.Second // +1s margin
+		}
+	}
+
+	fc.mu.Lock()
+	newUntil := time.Now().Add(wait)
+	// Only extend, never shorten an existing ban
+	if existing, ok := fc.floodUntil[chatID]; !ok || newUntil.After(existing) {
+		fc.floodUntil[chatID] = newUntil
+		fmt.Printf("Flood control: chat %d rate-limited for %v\n", chatID, wait)
+	}
+	fc.mu.Unlock()
 }
 
 // IsFlooded returns true if a user is currently flood-banned.
@@ -48,7 +66,7 @@ func (fc *FloodControl) IsFlooded(userID int64) bool {
 	return true
 }
 
-// WaitIfFlooded blocks until the flood ban expires (max 10 seconds).
+// WaitIfFlooded blocks until the flood ban expires.
 func (fc *FloodControl) WaitIfFlooded(userID int64) {
 	fc.mu.RLock()
 	until, ok := fc.floodUntil[userID]
@@ -62,9 +80,6 @@ func (fc *FloodControl) WaitIfFlooded(userID int64) {
 	if remaining <= 0 {
 		fc.clearFlood(userID)
 		return
-	}
-	if remaining > 10*time.Second {
-		remaining = 10 * time.Second
 	}
 	time.Sleep(remaining)
 	fc.clearFlood(userID)
