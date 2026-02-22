@@ -30,7 +30,7 @@ func (b *Bot) resolveTaskID(msg *tgbotapi.Message, partialID, mode string) (minu
 
 	project, ok := b.state.GetProject(threadIDStr)
 	if !ok {
-		b.reply(chatID, threadID, "No project bound. Use /project <name> first.")
+		b.reply(chatID, threadID, "No project bound. Use /p_bind <name> first.")
 		return minuano.Task{}, false
 	}
 
@@ -72,7 +72,7 @@ func (b *Bot) resolveTaskID(msg *tgbotapi.Message, partialID, mode string) (minu
 
 	switch len(matches) {
 	case 0:
-		b.reply(chatID, threadID, fmt.Sprintf("No task matching '%s'. Use /%s without arguments to see available tasks.", partialID, mode))
+		b.reply(chatID, threadID, fmt.Sprintf("No task matching '%s'. Use /t_%s without arguments to see available tasks.", partialID, mode))
 		return minuano.Task{}, false
 	case 1:
 		return matches[0], true

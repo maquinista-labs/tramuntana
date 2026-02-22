@@ -145,6 +145,8 @@ func (b *Bot) routeCallback(cq *tgbotapi.CallbackQuery) {
 		b.processAddTaskCallback(cq)
 	case strings.HasPrefix(data, "tpick_"):
 		b.processTaskPickerCallback(cq)
+	case strings.HasPrefix(data, "menu_"):
+		b.handleMenuCallback(cq)
 	case data == "noop":
 		// No-op button (e.g., page counter), already answered above
 	default:

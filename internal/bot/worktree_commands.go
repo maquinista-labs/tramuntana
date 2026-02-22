@@ -35,7 +35,7 @@ func (b *Bot) executePickwTask(chatID int64, threadID int, userID int64, taskID 
 
 	project, ok := b.state.GetProject(threadIDStr)
 	if !ok {
-		b.reply(chatID, threadID, "No project bound. Use /project <name> first.")
+		b.reply(chatID, threadID, "No project bound. Use /p_bind <name> first.")
 		return
 	}
 

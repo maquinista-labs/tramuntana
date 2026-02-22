@@ -23,7 +23,7 @@ func (b *Bot) handleProjectCommand(msg *tgbotapi.Message) {
 		if proj, ok := b.state.GetProject(threadIDStr); ok {
 			b.reply(chatID, threadID, fmt.Sprintf("Current project: %s", proj))
 		} else {
-			b.reply(chatID, threadID, "No project bound. Usage: /project <name>")
+			b.reply(chatID, threadID, "No project bound. Usage: /p_bind <name>")
 		}
 		return
 	}
@@ -42,7 +42,7 @@ func (b *Bot) handleTasksCommand(msg *tgbotapi.Message) {
 
 	project, ok := b.state.GetProject(threadIDStr)
 	if !ok {
-		b.reply(chatID, threadID, "No project bound. Use /project <name> first.")
+		b.reply(chatID, threadID, "No project bound. Use /p_bind <name> first.")
 		return
 	}
 
@@ -152,7 +152,7 @@ func (b *Bot) handleAutoCommand(msg *tgbotapi.Message) {
 
 	project, ok := b.state.GetProject(threadIDStr)
 	if !ok {
-		b.reply(chatID, threadID, "No project bound. Use /project <name> first.")
+		b.reply(chatID, threadID, "No project bound. Use /p_bind <name> first.")
 		return
 	}
 
@@ -189,7 +189,7 @@ func (b *Bot) handleBatchCommand(msg *tgbotapi.Message) {
 
 	args := strings.Fields(msg.CommandArguments())
 	if len(args) == 0 {
-		b.reply(chatID, threadID, "Usage: /batch <id1> [id2] ...")
+		b.reply(chatID, threadID, "Usage: /t_batch <id1> [id2] ...")
 		return
 	}
 

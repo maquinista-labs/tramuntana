@@ -36,7 +36,7 @@ func (b *Bot) handleAddCommand(msg *tgbotapi.Message) {
 
 	title := strings.TrimSpace(msg.CommandArguments())
 	if title == "" {
-		b.reply(chatID, threadID, "Usage: /add <task title>")
+		b.reply(chatID, threadID, "Usage: /p_add <task title>")
 		return
 	}
 
@@ -44,7 +44,7 @@ func (b *Bot) handleAddCommand(msg *tgbotapi.Message) {
 	threadIDStr := strconv.Itoa(threadID)
 	project, ok := b.state.GetProject(threadIDStr)
 	if !ok {
-		b.reply(chatID, threadID, "No project bound. Use /project <name> first.")
+		b.reply(chatID, threadID, "No project bound. Use /p_bind <name> first.")
 		return
 	}
 

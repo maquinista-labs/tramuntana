@@ -16,31 +16,41 @@ import (
 // handleCommand routes slash commands.
 func (b *Bot) handleCommand(msg *tgbotapi.Message) {
 	switch msg.Command() {
-	case "clear", "compact", "cost", "help", "memory":
-		b.forwardCommand(msg)
-	case "esc":
+	case "menu":
+		b.handleMenuCommand(msg)
+	case "c_clear":
+		b.forwardCommand(msg, "clear")
+	case "c_compact":
+		b.forwardCommand(msg, "compact")
+	case "c_cost":
+		b.forwardCommand(msg, "cost")
+	case "c_help":
+		b.forwardCommand(msg, "help")
+	case "c_memory":
+		b.forwardCommand(msg, "memory")
+	case "esc", "c_esc":
 		b.handleEsc(msg)
-	case "screenshot":
+	case "c_screenshot":
 		b.handleScreenshot(msg)
-	case "history":
+	case "p_history":
 		b.handleHistory(msg)
-	case "project":
+	case "p_bind":
 		b.handleProject(msg)
-	case "tasks":
+	case "p_tasks":
 		b.handleTasks(msg)
-	case "pick":
+	case "t_pick":
 		b.handlePick(msg)
-	case "auto":
+	case "t_auto":
 		b.handleAuto(msg)
-	case "batch":
+	case "t_batch":
 		b.handleBatch(msg)
-	case "add":
+	case "p_add":
 		b.handleAdd(msg)
-	case "get":
+	case "c_get":
 		b.handleGet(msg)
-	case "pickw":
+	case "t_pickw":
 		b.handlePickwCommand(msg)
-	case "merge":
+	case "t_merge":
 		b.handleMergeCommand(msg)
 	default:
 		b.reply(msg.Chat.ID, getThreadID(msg), "Unknown command: /"+msg.Command())
@@ -55,14 +65,15 @@ func (b *Bot) resolveWindow(msg *tgbotapi.Message) (string, bool) {
 }
 
 // forwardCommand sends a command as text to the bound tmux window.
-func (b *Bot) forwardCommand(msg *tgbotapi.Message) {
+// claudeCmd is the Claude-side command name (e.g. "clear", not "c_clear").
+func (b *Bot) forwardCommand(msg *tgbotapi.Message, claudeCmd string) {
 	windowID, bound := b.resolveWindow(msg)
 	if !bound {
 		b.reply(msg.Chat.ID, getThreadID(msg), "Topic not bound to a session. Send a message to bind.")
 		return
 	}
 
-	cmdText := "/" + msg.Command()
+	cmdText := "/" + claudeCmd
 	if err := tmux.SendKeysWithDelay(b.config.TmuxSessionName, windowID, cmdText, 500); err != nil {
 		if tmux.IsWindowDead(err) {
 			b.handleDeadWindow(msg, windowID, "")
@@ -74,7 +85,7 @@ func (b *Bot) forwardCommand(msg *tgbotapi.Message) {
 	}
 
 	// Special handling for /clear: reset session monitoring state
-	if msg.Command() == "clear" {
+	if claudeCmd == "clear" {
 		b.resetSessionTracking(windowID)
 	}
 }

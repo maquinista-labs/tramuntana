@@ -80,20 +80,21 @@ func New(cfg *config.Config) (*Bot, error) {
 // registerCommands sets the bot's command menu in Telegram.
 func (b *Bot) registerCommands() {
 	commands := tgbotapi.NewSetMyCommands(
-		tgbotapi.BotCommand{Command: "screenshot", Description: "Terminal screenshot with control keys"},
-		tgbotapi.BotCommand{Command: "esc", Description: "Send Escape to interrupt Claude"},
-		tgbotapi.BotCommand{Command: "history", Description: "Message history for this topic"},
-		tgbotapi.BotCommand{Command: "project", Description: "Bind a Minuano project to this topic"},
-		tgbotapi.BotCommand{Command: "tasks", Description: "List tasks for the bound project"},
-		tgbotapi.BotCommand{Command: "pick", Description: "Assign a specific task to Claude"},
-		tgbotapi.BotCommand{Command: "auto", Description: "Auto-claim and work project tasks"},
-		tgbotapi.BotCommand{Command: "batch", Description: "Work a list of tasks in order"},
-		tgbotapi.BotCommand{Command: "add", Description: "Create a new Minuano task"},
-		tgbotapi.BotCommand{Command: "get", Description: "Browse and send a file"},
-		tgbotapi.BotCommand{Command: "pickw", Description: "Pick task in isolated worktree"},
-		tgbotapi.BotCommand{Command: "merge", Description: "Merge a branch (auto-resolve conflicts)"},
-		tgbotapi.BotCommand{Command: "clear", Description: "Forward /clear to Claude Code"},
-		tgbotapi.BotCommand{Command: "help", Description: "Forward /help to Claude Code"},
+		tgbotapi.BotCommand{Command: "menu", Description: "Show command menu"},
+		tgbotapi.BotCommand{Command: "c_screenshot", Description: "Terminal screenshot with control keys"},
+		tgbotapi.BotCommand{Command: "c_esc", Description: "Send Escape to interrupt Claude"},
+		tgbotapi.BotCommand{Command: "c_clear", Description: "Forward /clear to Claude Code"},
+		tgbotapi.BotCommand{Command: "c_help", Description: "Forward /help to Claude Code"},
+		tgbotapi.BotCommand{Command: "c_get", Description: "Browse and send a file"},
+		tgbotapi.BotCommand{Command: "p_bind", Description: "Bind a Minuano project to this topic"},
+		tgbotapi.BotCommand{Command: "p_tasks", Description: "List tasks for the bound project"},
+		tgbotapi.BotCommand{Command: "p_add", Description: "Create a new Minuano task"},
+		tgbotapi.BotCommand{Command: "p_history", Description: "Message history for this topic"},
+		tgbotapi.BotCommand{Command: "t_pick", Description: "Assign a specific task to Claude"},
+		tgbotapi.BotCommand{Command: "t_pickw", Description: "Pick task in isolated worktree"},
+		tgbotapi.BotCommand{Command: "t_auto", Description: "Auto-claim and work project tasks"},
+		tgbotapi.BotCommand{Command: "t_batch", Description: "Work a list of tasks in order"},
+		tgbotapi.BotCommand{Command: "t_merge", Description: "Merge a branch (auto-resolve conflicts)"},
 	)
 	if _, err := b.api.Request(commands); err != nil {
 		log.Printf("Warning: failed to register bot commands: %v", err)

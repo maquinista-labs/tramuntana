@@ -19,7 +19,7 @@ func (b *Bot) handleMergeCommand(msg *tgbotapi.Message) {
 
 	branch := strings.TrimSpace(msg.CommandArguments())
 	if branch == "" {
-		b.reply(chatID, threadID, "Usage: /merge <branch>")
+		b.reply(chatID, threadID, "Usage: /t_merge <branch>")
 		return
 	}
 
