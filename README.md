@@ -65,51 +65,59 @@ Both share the same Minuano database. Tramuntana calls Minuano commands under th
 
 ## Telegram commands
 
-### Claude Code (forwarded)
+All commands use a namespace prefix: `c_` for Claude/terminal, `p_` for project, `t_` for task execution. Use `/menu` to get an inline keyboard with all commands grouped by category.
+
+### Menu
 
 | Command | Description |
 |---------|-------------|
-| `/clear` | Clear Claude session, reset JSONL tracking |
-| `/compact` | Compact context (forwarded to Claude) |
-| `/cost` | Show token costs (forwarded to Claude) |
-| `/help` | Show Claude help (forwarded to Claude) |
-| `/memory` | Show Claude memory (forwarded to Claude) |
+| `/menu` | Show inline keyboard with all commands |
 
-### Session control
+### Claude Code (`c_` — forwarded to Claude)
 
 | Command | Description |
 |---------|-------------|
-| `/esc` | Send Escape key to interrupt Claude |
-| `/screenshot` | Capture terminal as PNG with navigation keyboard |
-| `/history` | Browse JSONL transcript with pagination |
-| `/get` | File browser — navigate filesystem and send files |
+| `/c_clear` | Clear Claude session, reset JSONL tracking |
+| `/c_compact` | Compact context |
+| `/c_cost` | Show token costs |
+| `/c_help` | Show Claude help |
+| `/c_memory` | Show Claude memory |
+| `/c_esc` | Send Escape key to interrupt Claude |
+| `/c_screenshot` | Capture terminal as PNG with navigation keyboard |
+| `/c_get` | File browser — navigate filesystem and send files |
 
-### Minuano integration
-
-| Command | Description |
-|---------|-------------|
-| `/project [name]` | Bind topic to a Minuano project (show current if no arg) |
-| `/tasks` | List ready tasks for the bound project |
-| `/pick <task-id>` | Single-task mode — claim one task, work it |
-| `/auto` | Auto mode — loop claiming tasks until queue empty |
-| `/batch <id1> [id2...]` | Batch mode — work through tasks in order |
-| `/add <title>` | Create a Minuano task (interactive wizard for priority and body) |
-
-### Worktree isolation
+### Project (`p_` — Minuano project management)
 
 | Command | Description |
 |---------|-------------|
-| `/pickw <task-id>` | Pick task in isolated git worktree — creates new branch, topic, and tmux window |
-| `/merge <branch>` | Smart merge with automatic conflict resolution |
+| `/p_bind [name]` | Bind topic to a Minuano project (shows current if no arg, prompts for name) |
+| `/p_tasks` | List tasks for the bound project with inline pick buttons |
+| `/p_add [title]` | Create a Minuano task (prompts for title if omitted, then priority wizard) |
+| `/p_delete [id]` | Delete a Minuano task (shows picker if no arg) |
+| `/p_history` | Browse JSONL transcript with pagination |
 
-**`/pickw`** creates a full isolated environment:
+### Task execution (`t_` — run tasks)
+
+| Command | Description |
+|---------|-------------|
+| `/t_pick [task-id]` | Single-task mode — claim one task, work it (shows picker if no arg) |
+| `/t_pickw [task-id]` | Pick task in isolated git worktree |
+| `/t_auto` | Auto mode — loop claiming tasks until queue empty |
+| `/t_batch [id1 id2...]` | Batch mode — work through tasks in order (prompts for IDs if omitted) |
+| `/t_merge [branch]` | Smart merge with automatic conflict resolution (prompts for branch if omitted) |
+
+### Prompt-then-type
+
+Commands that take arguments (`/p_bind`, `/p_add`, `/t_batch`, `/t_merge`) support a two-step flow: tap the command bare, then type the argument as a normal message. The response is intercepted and never forwarded to the Claude session. Issuing any other `/` command cancels the pending prompt.
+
+**`/t_pickw`** creates a full isolated environment:
 1. Git worktree at `.minuano/worktrees/<project>-<taskid>`
 2. New branch `minuano/<project>-<taskid>`
 3. New forum topic for the task
 4. New tmux window in the worktree directory
 5. Task prompt sent to the new session
 
-**`/merge`** runs in two phases:
+**`/t_merge`** runs in two phases:
 1. Attempts clean `--no-ff` merge — if successful, cleans up worktree
 2. On conflict — aborts merge, creates a merge topic, spawns Claude with conflict file list and resolution instructions
 
@@ -119,7 +127,7 @@ Tramuntana detects Claude Code's interactive prompts (permission requests, plan 
 
 ### Screenshot control
 
-`/screenshot` renders the terminal as a PNG and provides a control keyboard:
+`/c_screenshot` renders the terminal as a PNG and provides a control keyboard:
 
 | Button | Action |
 |--------|--------|
