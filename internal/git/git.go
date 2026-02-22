@@ -92,6 +92,65 @@ func MergeNoFF(dir, branch, baseBranch, message string) (string, error) {
 	return sha, nil
 }
 
+// MergeSquash performs a squash merge: stages all changes from branch but does not
+// create a merge commit. The caller gets a single flat commit on the base branch.
+func MergeSquash(dir, branch, baseBranch, message string) (string, error) {
+	// Ensure we're on the base branch
+	checkout := exec.Command("git", "-C", dir, "checkout", baseBranch)
+	if out, err := checkout.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git checkout %s: %s: %w", baseBranch, string(out), err)
+	}
+
+	// Squash merge — stages changes but doesn't commit
+	squashCmd := exec.Command("git", "-C", dir, "merge", "--squash", branch)
+	out, err := squashCmd.CombinedOutput()
+	if err != nil {
+		outStr := string(out)
+		if strings.Contains(outStr, "CONFLICT") || strings.Contains(outStr, "Automatic merge failed") {
+			files := conflictFiles(dir)
+			return "", &ConflictError{Files: files}
+		}
+		return "", fmt.Errorf("git merge --squash %s: %s: %w", branch, outStr, err)
+	}
+
+	// Commit the squashed changes
+	commitCmd := exec.Command("git", "-C", dir, "commit", "-m", message)
+	if out, err := commitCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git commit: %s: %w", string(out), err)
+	}
+
+	sha, err := revParse(dir, "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return sha, nil
+}
+
+// ListUnmergedBranches returns local branches not yet merged into the given base branch.
+func ListUnmergedBranches(dir, baseBranch string) ([]string, error) {
+	cmd := exec.Command("git", "-C", dir, "branch", "--no-merged", baseBranch, "--format", "%(refname:short)")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git branch --no-merged %s: %w", baseBranch, err)
+	}
+	var branches []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line != "" {
+			branches = append(branches, line)
+		}
+	}
+	return branches, nil
+}
+
+// ResetHard resets the working tree and index to HEAD.
+func ResetHard(dir string) error {
+	cmd := exec.Command("git", "-C", dir, "reset", "--hard", "HEAD")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git reset --hard HEAD: %s: %w", string(out), err)
+	}
+	return nil
+}
+
 // AbortMerge aborts an in-progress merge.
 func AbortMerge(dir string) error {
 	cmd := exec.Command("git", "-C", dir, "merge", "--abort")
