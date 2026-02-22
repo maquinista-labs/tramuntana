@@ -11,17 +11,41 @@ import (
 
 var retryAfterRe = regexp.MustCompile(`retry after (\d+)`)
 
+const sendInterval = 100 * time.Millisecond // minimum gap between API calls per chat
+
 // FloodControl handles Telegram 429 rate limiting.
 type FloodControl struct {
 	mu         sync.RWMutex
-	floodUntil map[int64]time.Time // user_id → flood ban expiry
+	floodUntil map[int64]time.Time // chat_id → flood ban expiry
+
+	sendMu   sync.Mutex
+	lastSend map[int64]time.Time // chat_id → last API call time
 }
 
 // NewFloodControl creates a new FloodControl instance.
 func NewFloodControl() *FloodControl {
 	return &FloodControl{
 		floodUntil: make(map[int64]time.Time),
+		lastSend:   make(map[int64]time.Time),
 	}
+}
+
+// Throttle enforces a minimum interval between API calls to the same chat.
+// Prevents burst-firing requests that trigger Telegram 429 errors.
+func (fc *FloodControl) Throttle(chatID int64) {
+	fc.sendMu.Lock()
+	last := fc.lastSend[chatID]
+	fc.sendMu.Unlock()
+
+	if !last.IsZero() {
+		if wait := sendInterval - time.Since(last); wait > 0 {
+			time.Sleep(wait)
+		}
+	}
+
+	fc.sendMu.Lock()
+	fc.lastSend[chatID] = time.Now()
+	fc.sendMu.Unlock()
 }
 
 // HandleError checks for 429 errors and sets flood bans.

@@ -205,7 +205,7 @@ func TestExtractToolInput_BashTruncation(t *testing.T) {
 	}
 }
 
-func TestToolPairing(t *testing.T) {
+func TestToolPairing_SameBatch(t *testing.T) {
 	pending := make(map[string]PendingTool)
 
 	// Parse assistant entry with tool_use
@@ -216,26 +216,19 @@ func TestToolPairing(t *testing.T) {
 	userLine := []byte(`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"tu_abc","content":"package main\n"}]}}`)
 	entry2, _ := ParseLine(userLine)
 
+	// Same-batch: tool_use is suppressed, only tool_result emitted
 	results := ParseEntries([]*Entry{entry1, entry2}, pending)
 
-	if len(results) != 2 {
-		t.Fatalf("expected 2 results, got %d", len(results))
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result (combined), got %d", len(results))
 	}
 
-	// First: tool_use
-	if results[0].ContentType != "tool_use" {
-		t.Errorf("result 0 type = %q, want tool_use", results[0].ContentType)
+	// Combined tool_result with tool name from pairing
+	if results[0].ContentType != "tool_result" {
+		t.Errorf("result 0 type = %q, want tool_result", results[0].ContentType)
 	}
 	if results[0].ToolName != "Read" {
 		t.Errorf("result 0 tool = %q, want Read", results[0].ToolName)
-	}
-
-	// Second: tool_result, paired
-	if results[1].ContentType != "tool_result" {
-		t.Errorf("result 1 type = %q, want tool_result", results[1].ContentType)
-	}
-	if results[1].ToolName != "Read" {
-		t.Errorf("result 1 tool = %q, want Read", results[1].ToolName)
 	}
 
 	// Pending should be empty

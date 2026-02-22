@@ -179,6 +179,11 @@ func (sp *StatusPoller) poll() {
 					continue
 				}
 
+				// Skip status updates when queue has pending messages — content takes priority
+				if sp.queue != nil && sp.queue.QueueLen(userID) > 0 {
+					continue
+				}
+
 				sp.mu.Lock()
 				sp.lastStatus[key] = statusText
 				frame := sp.animFrame[key]

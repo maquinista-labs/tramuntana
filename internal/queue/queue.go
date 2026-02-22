@@ -70,6 +70,16 @@ func New(api *tgbotapi.BotAPI) *Queue {
 
 // Enqueue adds a message task to the user's queue.
 func (q *Queue) Enqueue(task MessageTask) {
+	// Don't enqueue ephemeral messages during flood — they'd be dropped by the worker
+	// anyway. This prevents the channel from filling with doomed messages, which would
+	// block content messages from being enqueued.
+	if q.flood.IsFlooded(task.ChatID) {
+		switch task.ContentType {
+		case "status_update", "status_clear", "tool_use", "tool_result":
+			return
+		}
+	}
+
 	q.mu.Lock()
 	ch, ok := q.queues[task.UserID]
 	if !ok {
@@ -203,11 +213,6 @@ func (q *Queue) processStatusUpdate(task MessageTask) {
 	text := strings.Join(task.Parts, "\n")
 	ut := userThread{task.UserID, task.ThreadID}
 
-	// Send typing indicator when Claude is actively working
-	if strings.Contains(strings.ToLower(text), "esc to interrupt") {
-		q.sendTyping(task.ChatID)
-	}
-
 	q.mu.RLock()
 	existing, hasExisting := q.statusMsgs[ut]
 	q.mu.RUnlock()
@@ -215,6 +220,11 @@ func (q *Queue) processStatusUpdate(task MessageTask) {
 	// Deduplicate: skip if same text
 	if hasExisting && existing.Text == text {
 		return
+	}
+
+	// Send typing indicator when Claude is actively working (after dedup to avoid wasted API calls)
+	if strings.Contains(strings.ToLower(text), "esc to interrupt") {
+		q.sendTyping(task.ChatID)
 	}
 
 	if hasExisting && existing.MessageID != 0 {
@@ -390,6 +400,7 @@ func isPermanentError(err error) bool {
 
 // sendRaw sends a message via Telegram API.
 func (q *Queue) sendRaw(chatID int64, threadID int, text, parseMode string) (int, error) {
+	q.flood.Throttle(chatID)
 	params := tgbotapi.Params{}
 	params.AddNonZero64("chat_id", chatID)
 	params.AddNonEmpty("text", text)
@@ -432,6 +443,7 @@ func (q *Queue) editMessage(chatID int64, messageID int, text string) error {
 }
 
 func (q *Queue) editRaw(chatID int64, messageID int, text, parseMode string) error {
+	q.flood.Throttle(chatID)
 	params := tgbotapi.Params{}
 	params.AddNonZero64("chat_id", chatID)
 	params.AddNonZero("message_id", messageID)

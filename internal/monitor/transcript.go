@@ -278,9 +278,13 @@ func extractToolResultText(contentJSON json.RawMessage) string {
 
 // ParseEntries processes a list of entries with tool pairing.
 // pending is the carry-over map from previous poll cycles.
-// Returns parsed entries and any tool_use entries that haven't been paired yet.
+// When tool_use and tool_result appear in the same batch, the tool_use is
+// suppressed and only the combined tool_result is emitted (saves an API call).
 func ParseEntries(entries []*Entry, pending map[string]PendingTool) []ParsedEntry {
 	var result []ParsedEntry
+	// Track tool_use entries added in this batch so we can suppress them
+	// if their tool_result also arrives in the same batch.
+	batchToolUseIdx := make(map[string]int) // toolUseID → index in result
 
 	for _, entry := range entries {
 		if entry == nil {
@@ -307,6 +311,7 @@ func ParseEntries(entries []*Entry, pending map[string]PendingTool) []ParsedEntr
 					Input:     block.ToolInput,
 					Summary:   summary,
 				}
+				idx := len(result)
 				result = append(result, ParsedEntry{
 					Role:        "assistant",
 					ContentType: "tool_use",
@@ -314,6 +319,7 @@ func ParseEntries(entries []*Entry, pending map[string]PendingTool) []ParsedEntr
 					ToolUseID:   block.ToolUseID,
 					ToolName:    block.ToolName,
 				})
+				batchToolUseIdx[block.ToolUseID] = idx
 
 			case "tool_result":
 				pe := ParsedEntry{
@@ -334,6 +340,13 @@ func ParseEntries(entries []*Entry, pending map[string]PendingTool) []ParsedEntr
 				}
 				pe.IsError = block.IsError
 
+				// If tool_use was in same batch, suppress it — the combined
+				// tool_result message will contain all the info.
+				if idx, ok := batchToolUseIdx[block.ToolUseID]; ok {
+					result[idx].ContentType = "" // mark for removal
+					delete(batchToolUseIdx, block.ToolUseID)
+				}
+
 				result = append(result, pe)
 
 			case "thinking":
@@ -348,7 +361,14 @@ func ParseEntries(entries []*Entry, pending map[string]PendingTool) []ParsedEntr
 		}
 	}
 
-	return result
+	// Remove suppressed entries (same-batch tool_use that got paired)
+	filtered := result[:0]
+	for _, r := range result {
+		if r.ContentType != "" {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
 }
 
 // ParsedEntry is a display-ready parsed entry for the message queue.
