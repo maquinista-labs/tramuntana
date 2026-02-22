@@ -29,6 +29,8 @@ type Monitor struct {
 	lastSessionMap map[string]state.SessionMapEntry
 	pollInterval   time.Duration
 	turnStarts     sync.Map // windowID → time.Time
+	PlanHandler    func(userID int64, threadID int, chatID int64, planJSON string)
+	planBuffers    map[string]string // windowID → partial plan text
 }
 
 // New creates a new Monitor.
@@ -42,6 +44,7 @@ func New(cfg *config.Config, st *state.State, ms *state.MonitorState, q *queue.Q
 		fileMtimes:     make(map[string]time.Time),
 		lastSessionMap: make(map[string]state.SessionMapEntry),
 		pollInterval:   time.Duration(cfg.MonitorPollInterval * float64(time.Second)),
+		planBuffers:    make(map[string]string),
 	}
 }
 
@@ -237,6 +240,27 @@ func (m *Monitor) enqueueEntry(userID int64, threadID int, chatID int64, windowI
 		m.SetTurnStart(windowID)
 	}
 
+	// Detect PLAN_JSON: marker in assistant text
+	if pe.Role == "assistant" && pe.ContentType == "text" && m.PlanHandler != nil {
+		peText := pe.Text
+		// Prepend any buffered partial plan from previous entry
+		if buf, ok := m.planBuffers[windowID]; ok {
+			peText = buf + peText
+			delete(m.planBuffers, windowID)
+		}
+		if planJSON, rest, found := extractPlanJSON(peText); found {
+			m.PlanHandler(userID, threadID, chatID, planJSON)
+			if rest == "" {
+				return
+			}
+			pe.Text = rest
+		} else if strings.Contains(peText, "PLAN_JSON:") {
+			// Marker found but JSON incomplete — buffer for next entry
+			m.planBuffers[windowID] = peText
+			return
+		}
+	}
+
 	switch pe.ContentType {
 	case "text":
 		if pe.Role == "user" {
@@ -352,6 +376,57 @@ func (m *Monitor) searchJSONLFiles(projectDir, sessionID string) string {
 		}
 	}
 	return ""
+}
+
+// extractPlanJSON finds "PLAN_JSON:" marker followed by a JSON array,
+// returns the JSON string, any remaining text after the array, and whether it was found.
+func extractPlanJSON(text string) (jsonStr, rest string, found bool) {
+	marker := "PLAN_JSON:"
+	idx := strings.Index(text, marker)
+	if idx < 0 {
+		return "", "", false
+	}
+
+	after := text[idx+len(marker):]
+	after = strings.TrimLeft(after, " \t\n\r")
+	if len(after) == 0 || after[0] != '[' {
+		return "", "", false
+	}
+
+	// Find matching closing bracket by depth
+	depth := 0
+	inString := false
+	escaped := false
+	for i, ch := range after {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' && inString {
+			escaped = true
+			continue
+		}
+		if ch == '"' {
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+		if ch == '[' {
+			depth++
+		} else if ch == ']' {
+			depth--
+			if depth == 0 {
+				jsonStr = after[:i+1]
+				remaining := strings.TrimSpace(text[:idx] + after[i+1:])
+				return jsonStr, remaining, true
+			}
+		}
+	}
+
+	// Unmatched brackets — incomplete JSON
+	return "", "", false
 }
 
 // windowIDFromSessionKey extracts window ID from session key ("sessionName:@N" → "@N").

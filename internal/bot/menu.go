@@ -52,7 +52,10 @@ func buildMenuKeyboard() tgbotapi.InlineKeyboardMarkup {
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Auto", "menu_t_auto"),
 			tgbotapi.NewInlineKeyboardButtonData("Batch", "menu_t_batch"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Merge", "menu_t_merge"),
+			tgbotapi.NewInlineKeyboardButtonData("Plan", "menu_t_plan"),
 		),
 	)
 }
@@ -93,6 +96,8 @@ func (b *Bot) handleMenuCallback(cq *tgbotapi.CallbackQuery) {
 		b.handleBatch(msg)
 	case "t_merge":
 		b.handleMergeCommand(msg)
+	case "t_plan":
+		b.handlePlanCommand(msg)
 	}
 }
 

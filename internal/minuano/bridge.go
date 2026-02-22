@@ -200,6 +200,24 @@ func (b *Bridge) Add(title, project, body string, priority int) (*AddResult, err
 	return parseAddOutput(out)
 }
 
+// AddWithDeps creates a new task with dependency ordering via `minuano add --after`.
+func (b *Bridge) AddWithDeps(title, project, body string, priority int, afterIDs []string) (*AddResult, error) {
+	args := []string{"add", title, "--project", project, "--priority", strconv.Itoa(priority)}
+	if body != "" {
+		args = append(args, "--body", body)
+	}
+	for _, dep := range afterIDs {
+		args = append(args, "--after", dep)
+	}
+
+	out, err := b.run(args...)
+	if err != nil {
+		return nil, err
+	}
+
+	return parseAddOutput(out)
+}
+
 // parseAddOutput extracts the task ID and title from `minuano add` output.
 // Expected format: "Created: <id>  \"<title>\"\n"
 func parseAddOutput(out string) (*AddResult, error) {

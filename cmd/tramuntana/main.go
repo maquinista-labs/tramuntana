@@ -105,6 +105,7 @@ func runServe() error {
 
 	// Create session monitor
 	mon := monitor.New(cfg, b.State(), ms, q)
+	mon.PlanHandler = b.HandlePlanFromMonitor
 
 	// Create status poller
 	sp := bot.NewStatusPoller(b, q, mon)

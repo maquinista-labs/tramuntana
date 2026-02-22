@@ -8,7 +8,7 @@ import (
 
 // pendingInput represents a command waiting for user text input.
 type pendingInput struct {
-	Command  string // "p_bind", "p_add", "t_batch", "t_merge"
+	Command  string // "p_bind", "p_add", "t_batch", "t_merge", "t_plan"
 	ChatID   int64
 	ThreadID int
 }
@@ -66,6 +66,8 @@ func (b *Bot) handlePendingInput(msg *tgbotapi.Message) bool {
 		b.executeBatchWithArgs(msg, text)
 	case "t_merge":
 		b.executeMergeWithBranch(msg, text)
+	case "t_plan":
+		b.executePlanWithDescription(msg, text)
 	default:
 		log.Printf("Unknown pending input command: %s", pi.Command)
 		return false

@@ -36,6 +36,8 @@ type Bot struct {
 	taskPickerStates map[int64]*taskPickerState
 	// Per-user pending input for parameterized commands
 	pendingInputs map[int64]*pendingInput
+	// Per-user pending plan approval state
+	planStates map[int64]*planState
 	// Monitor state (set by serve command when monitor is started)
 	monitorState *state.MonitorState
 	// Minuano CLI bridge
@@ -76,6 +78,7 @@ func New(cfg *config.Config) (*Bot, error) {
 		addTaskStates:      make(map[int64]*addTaskState),
 		taskPickerStates:   make(map[int64]*taskPickerState),
 		pendingInputs:      make(map[int64]*pendingInput),
+		planStates:         make(map[int64]*planState),
 		minuanoBridge:      minuano.NewBridge(cfg.MinuanoBin, cfg.MinuanoDB),
 	}, nil
 }
@@ -99,6 +102,7 @@ func (b *Bot) registerCommands() {
 		tgbotapi.BotCommand{Command: "t_auto", Description: "Auto-claim and work project tasks"},
 		tgbotapi.BotCommand{Command: "t_batch", Description: "Work a list of tasks in order"},
 		tgbotapi.BotCommand{Command: "t_merge", Description: "Merge a branch (auto-resolve conflicts)"},
+		tgbotapi.BotCommand{Command: "t_plan", Description: "Plan and create tasks from a description"},
 	)
 	if _, err := b.api.Request(commands); err != nil {
 		log.Printf("Warning: failed to register bot commands: %v", err)
