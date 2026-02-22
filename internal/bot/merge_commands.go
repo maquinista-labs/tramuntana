@@ -19,9 +19,28 @@ func (b *Bot) handleMergeCommand(msg *tgbotapi.Message) {
 
 	branch := strings.TrimSpace(msg.CommandArguments())
 	if branch == "" {
-		b.reply(chatID, threadID, "Usage: /t_merge <branch>")
+		b.reply(chatID, threadID, "Send the branch name:")
+		b.setPendingInput(msg.From.ID, "t_merge", chatID, threadID)
 		return
 	}
+
+	b.executeMerge(msg, branch)
+}
+
+// executeMergeWithBranch is the pending-input entry point for merge.
+func (b *Bot) executeMergeWithBranch(msg *tgbotapi.Message, text string) {
+	branch := strings.TrimSpace(text)
+	if branch == "" {
+		b.reply(msg.Chat.ID, getThreadID(msg), "Empty branch name.")
+		return
+	}
+	b.executeMerge(msg, branch)
+}
+
+// executeMerge performs the merge operation.
+func (b *Bot) executeMerge(msg *tgbotapi.Message, branch string) {
+	chatID := msg.Chat.ID
+	threadID := getThreadID(msg)
 
 	// Get repo root from current window's CWD
 	userIDStr := strconv.FormatInt(msg.From.ID, 10)

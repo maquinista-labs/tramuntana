@@ -15,6 +15,9 @@ import (
 
 // handleCommand routes slash commands.
 func (b *Bot) handleCommand(msg *tgbotapi.Message) {
+	// Clear any pending input — user is issuing a new command
+	b.clearPendingInput(msg.From.ID)
+
 	switch msg.Command() {
 	case "menu":
 		b.handleMenuCommand(msg)

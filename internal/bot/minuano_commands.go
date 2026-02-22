@@ -18,16 +18,24 @@ func (b *Bot) handleProjectCommand(msg *tgbotapi.Message) {
 
 	projectName := strings.TrimSpace(msg.CommandArguments())
 	if projectName == "" {
-		// Show current binding
+		// Show current binding and prompt for new name
 		threadIDStr := strconv.Itoa(threadID)
 		if proj, ok := b.state.GetProject(threadIDStr); ok {
-			b.reply(chatID, threadID, fmt.Sprintf("Current project: %s", proj))
+			b.reply(chatID, threadID, fmt.Sprintf("Current project: %s\n\nSend a name to bind:", proj))
 		} else {
-			b.reply(chatID, threadID, "No project bound. Usage: /p_bind <name>")
+			b.reply(chatID, threadID, "No project bound. Send a name to bind:")
 		}
+		b.setPendingInput(msg.From.ID, "p_bind", chatID, threadID)
 		return
 	}
 
+	b.executeProjectBind(msg, projectName)
+}
+
+// executeProjectBind binds a project name to the current thread.
+func (b *Bot) executeProjectBind(msg *tgbotapi.Message, projectName string) {
+	chatID := msg.Chat.ID
+	threadID := getThreadID(msg)
 	threadIDStr := strconv.Itoa(threadID)
 	b.state.BindProject(threadIDStr, projectName)
 	b.saveState()
@@ -189,9 +197,28 @@ func (b *Bot) handleBatchCommand(msg *tgbotapi.Message) {
 
 	args := strings.Fields(msg.CommandArguments())
 	if len(args) == 0 {
-		b.reply(chatID, threadID, "Usage: /t_batch <id1> [id2] ...")
+		b.reply(chatID, threadID, "Send the task IDs (space-separated):")
+		b.setPendingInput(msg.From.ID, "t_batch", chatID, threadID)
 		return
 	}
+
+	b.executeBatch(msg, args)
+}
+
+// executeBatchWithArgs parses a text string into args and executes batch.
+func (b *Bot) executeBatchWithArgs(msg *tgbotapi.Message, text string) {
+	args := strings.Fields(strings.TrimSpace(text))
+	if len(args) == 0 {
+		b.reply(msg.Chat.ID, getThreadID(msg), "No task IDs provided.")
+		return
+	}
+	b.executeBatch(msg, args)
+}
+
+// executeBatch sends a multi-task prompt to the bound tmux window.
+func (b *Bot) executeBatch(msg *tgbotapi.Message, args []string) {
+	chatID := msg.Chat.ID
+	threadID := getThreadID(msg)
 
 	windowID, bound := b.resolveWindow(msg)
 	if !bound {

@@ -32,11 +32,26 @@ type addTaskState struct {
 func (b *Bot) handleAddCommand(msg *tgbotapi.Message) {
 	chatID := msg.Chat.ID
 	threadID := getThreadID(msg)
-	userID := msg.From.ID
 
 	title := strings.TrimSpace(msg.CommandArguments())
 	if title == "" {
-		b.reply(chatID, threadID, "Usage: /p_add <task title>")
+		b.reply(chatID, threadID, "Send the task title:")
+		b.setPendingInput(msg.From.ID, "p_add", chatID, threadID)
+		return
+	}
+
+	b.executeAddWithTitle(msg, title)
+}
+
+// executeAddWithTitle starts the add-task wizard with the given title.
+func (b *Bot) executeAddWithTitle(msg *tgbotapi.Message, title string) {
+	chatID := msg.Chat.ID
+	threadID := getThreadID(msg)
+	userID := msg.From.ID
+
+	title = strings.TrimSpace(title)
+	if title == "" {
+		b.reply(chatID, threadID, "Empty title. Try again.")
 		return
 	}
 

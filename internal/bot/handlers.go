@@ -21,6 +21,11 @@ func (b *Bot) handleTextMessage(msg *tgbotapi.Message) {
 		return
 	}
 
+	// Check for pending input (prompt-then-type commands)
+	if b.handlePendingInput(msg) {
+		return
+	}
+
 	// Cancel any running bash capture for this topic
 	cancelBashCapture(msg.From.ID, getThreadID(msg))
 
