@@ -154,6 +154,10 @@ func (b *Bot) routeCallback(cq *tgbotapi.CallbackQuery) {
 		b.handleMergeCallback(cq)
 	case strings.HasPrefix(data, "plan_"):
 		b.processPlanCallback(cq)
+	case strings.HasPrefix(data, "planner_"):
+		b.processPlannerCallback(cq, data)
+	case strings.HasPrefix(data, "approval_"):
+		b.processApprovalCallback(cq)
 	case strings.HasPrefix(data, "menu_"):
 		b.handleMenuCallback(cq)
 	case data == "noop":

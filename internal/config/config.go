@@ -21,6 +21,9 @@ type Config struct {
 	MinuanoBin          string
 	MinuanoDB           string
 	MinuanoScriptsDir   string
+	QueueTopicID        int64
+	ApprovalsTopicID    int64
+	DefaultProject      string
 }
 
 func Load(envFile ...string) (*Config, error) {
@@ -85,6 +88,18 @@ func Load(envFile ...string) (*Config, error) {
 
 	minuanoScriptsDir := os.Getenv("MINUANO_SCRIPTS_DIR")
 
+	var queueTopicID int64
+	if q := os.Getenv("TRAMUNTANA_QUEUE_TOPIC_ID"); q != "" {
+		queueTopicID, _ = strconv.ParseInt(q, 10, 64)
+	}
+
+	var approvalsTopicID int64
+	if a := os.Getenv("TRAMUNTANA_APPROVALS_TOPIC_ID"); a != "" {
+		approvalsTopicID, _ = strconv.ParseInt(a, 10, 64)
+	}
+
+	defaultProject := os.Getenv("TRAMUNTANA_DEFAULT_PROJECT")
+
 	return &Config{
 		TelegramBotToken:    token,
 		AllowedUsers:        users,
@@ -96,6 +111,9 @@ func Load(envFile ...string) (*Config, error) {
 		MinuanoBin:          minuanoBin,
 		MinuanoDB:           os.Getenv("MINUANO_DB"),
 		MinuanoScriptsDir:   minuanoScriptsDir,
+		QueueTopicID:        queueTopicID,
+		ApprovalsTopicID:    approvalsTopicID,
+		DefaultProject:      defaultProject,
 	}, nil
 }
 
