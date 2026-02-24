@@ -57,8 +57,12 @@ func (b *Bot) handleCommand(msg *tgbotapi.Message) {
 		b.handleMergeCommand(msg)
 	case "p_delete":
 		b.handleDeleteCommand(msg)
+	case "t_unclaim":
+		b.handleUnclaimCommand(msg)
 	case "t_plan":
 		b.handlePlanCommand(msg)
+	case "plan":
+		b.handlePlannerCommand(msg)
 	default:
 		b.reply(msg.Chat.ID, getThreadID(msg), "Unknown command: /"+msg.Command())
 	}

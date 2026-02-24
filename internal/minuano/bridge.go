@@ -52,6 +52,11 @@ type TaskDetail struct {
 	Context []*TaskContext `json:"context"`
 }
 
+// Run executes a minuano command and returns stdout.
+func (b *Bridge) Run(args ...string) (string, error) {
+	return b.run(args...)
+}
+
 // run executes a minuano command and returns stdout.
 func (b *Bridge) run(args ...string) (string, error) {
 	if b.DBFlag != "" {
@@ -144,6 +149,12 @@ func (b *Bridge) PromptAuto(project string) (string, error) {
 // PromptBatch generates a batch prompt for multiple tasks.
 func (b *Bridge) PromptBatch(taskIDs ...string) (string, error) {
 	return b.Prompt("batch", taskIDs...)
+}
+
+// Unclaim releases a claimed task back to ready via `minuano unclaim`.
+func (b *Bridge) Unclaim(taskID string) error {
+	_, err := b.run("unclaim", taskID)
+	return err
 }
 
 // Delete removes a task by ID using a direct SQL delete via psql.

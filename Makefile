@@ -4,6 +4,7 @@ BINARY = tramuntana
 
 build:
 	go build -o $(BINARY) ./cmd/tramuntana
+	go install ./cmd/tramuntana
 
 install:
 	go install ./cmd/tramuntana

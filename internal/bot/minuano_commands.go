@@ -329,6 +329,78 @@ func (b *Bot) executeDeleteTask(chatID int64, threadID int, taskID, title string
 	b.reply(chatID, threadID, fmt.Sprintf("Deleted task: %s — %s", taskID, title))
 }
 
+// handleUnclaimCommand releases a claimed task back to ready.
+func (b *Bot) handleUnclaimCommand(msg *tgbotapi.Message) {
+	chatID := msg.Chat.ID
+	threadID := getThreadID(msg)
+	threadIDStr := strconv.Itoa(threadID)
+
+	project, ok := b.state.GetProject(threadIDStr)
+	if !ok {
+		b.reply(chatID, threadID, "No project bound. Use /p_bind <name> first.")
+		return
+	}
+
+	partialID := strings.TrimSpace(msg.CommandArguments())
+
+	tasks, err := b.minuanoBridge.Status(project)
+	if err != nil {
+		log.Printf("Error getting tasks for project %s: %v", project, err)
+		b.reply(chatID, threadID, "Error: failed to get tasks.")
+		return
+	}
+
+	// Filter to claimed tasks only
+	var claimed []minuano.Task
+	for _, t := range tasks {
+		if t.Status == "claimed" {
+			claimed = append(claimed, t)
+		}
+	}
+
+	if partialID == "" {
+		// Show picker with claimed tasks
+		if len(claimed) == 0 {
+			b.reply(chatID, threadID, "No claimed tasks to unclaim.")
+			return
+		}
+		b.showTaskPicker(msg, claimed, "unclaim", project)
+		return
+	}
+
+	// Resolve partial ID against claimed tasks
+	for _, t := range claimed {
+		if t.ID == partialID {
+			b.executeUnclaimTask(chatID, threadID, t.ID, t.Title)
+			return
+		}
+	}
+	var matches []minuano.Task
+	for _, t := range claimed {
+		if strings.HasPrefix(t.ID, partialID) {
+			matches = append(matches, t)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		b.reply(chatID, threadID, fmt.Sprintf("No claimed task matching '%s'.", partialID))
+	case 1:
+		b.executeUnclaimTask(chatID, threadID, matches[0].ID, matches[0].Title)
+	default:
+		b.showTaskPicker(msg, matches, "unclaim", project)
+	}
+}
+
+// executeUnclaimTask unclaims a task by ID and sends confirmation.
+func (b *Bot) executeUnclaimTask(chatID int64, threadID int, taskID, title string) {
+	if err := b.minuanoBridge.Unclaim(taskID); err != nil {
+		log.Printf("Error unclaiming task %s: %v", taskID, err)
+		b.reply(chatID, threadID, fmt.Sprintf("Error: %v", err))
+		return
+	}
+	b.reply(chatID, threadID, fmt.Sprintf("Unclaimed: %s — %s", taskID, title))
+}
+
 // sendPromptToTmux writes a prompt to a temp file and sends a reference to tmux.
 // Long prompts exceed tmux send-keys limits, so we use a temp file.
 func (b *Bot) sendPromptToTmux(windowID, prompt string) error {

@@ -101,8 +101,10 @@ func (b *Bot) registerCommands() {
 		tgbotapi.BotCommand{Command: "t_pickw", Description: "Pick task in isolated worktree"},
 		tgbotapi.BotCommand{Command: "t_auto", Description: "Auto-claim and work project tasks"},
 		tgbotapi.BotCommand{Command: "t_batch", Description: "Work a list of tasks in order"},
+		tgbotapi.BotCommand{Command: "t_unclaim", Description: "Release a claimed task back to ready"},
 		tgbotapi.BotCommand{Command: "t_merge", Description: "Merge a branch (auto-resolve conflicts)"},
 		tgbotapi.BotCommand{Command: "t_plan", Description: "Plan and create tasks from a description"},
+		tgbotapi.BotCommand{Command: "plan", Description: "Open a planner session in this topic"},
 	)
 	if _, err := b.api.Request(commands); err != nil {
 		log.Printf("Warning: failed to register bot commands: %v", err)
@@ -240,4 +242,12 @@ func (b *Bot) Config() *config.Config {
 // SetQueue sets the message queue reference for flood control checks.
 func (b *Bot) SetQueue(q *queue.Queue) {
 	b.msgQueue = q
+}
+
+// answerCallback answers an inline callback query with a toast message.
+func (b *Bot) answerCallback(callbackID, text string) {
+	cb := tgbotapi.NewCallback(callbackID, text)
+	if _, err := b.api.Request(cb); err != nil {
+		log.Printf("Error answering callback: %v", err)
+	}
 }

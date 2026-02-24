@@ -57,6 +57,9 @@ func buildMenuKeyboard() tgbotapi.InlineKeyboardMarkup {
 			tgbotapi.NewInlineKeyboardButtonData("Merge", "menu_t_merge"),
 			tgbotapi.NewInlineKeyboardButtonData("Plan", "menu_t_plan"),
 		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Unclaim", "menu_t_unclaim"),
+		),
 	)
 }
 
@@ -98,6 +101,8 @@ func (b *Bot) handleMenuCallback(cq *tgbotapi.CallbackQuery) {
 		b.handleMergeCommand(msg)
 	case "t_plan":
 		b.handlePlanCommand(msg)
+	case "t_unclaim":
+		b.handleUnclaimCommand(msg)
 	}
 }
 

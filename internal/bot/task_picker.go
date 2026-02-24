@@ -157,6 +157,9 @@ func (b *Bot) processTaskPickerCallback(cq *tgbotapi.CallbackQuery) {
 	} else if strings.HasPrefix(data, "tpick_delete:") {
 		mode = "delete"
 		taskID = data[len("tpick_delete:"):]
+	} else if strings.HasPrefix(data, "tpick_unclaim:") {
+		mode = "unclaim"
+		taskID = data[len("tpick_unclaim:"):]
 	} else {
 		log.Printf("Unknown task picker callback: %s", data)
 		return
@@ -200,6 +203,17 @@ func (b *Bot) processTaskPickerCallback(cq *tgbotapi.CallbackQuery) {
 			}
 		}
 		b.executeDeleteTask(chatID, threadID, taskID, title)
+	case "unclaim":
+		var title string
+		if ok {
+			for _, t := range tps.Tasks {
+				if t.ID == taskID {
+					title = t.Title
+					break
+				}
+			}
+		}
+		b.executeUnclaimTask(chatID, threadID, taskID, title)
 	}
 }
 
