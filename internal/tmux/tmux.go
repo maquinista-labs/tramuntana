@@ -20,12 +20,17 @@ func SessionExists(name string) bool {
 	return exec.Command("tmux", "has-session", "-t", name).Run() == nil
 }
 
+// InitWindowName is the name given to the placeholder window created by EnsureSession.
+// The window picker should filter it out since it has no Claude process.
+const InitWindowName = "_init"
+
 // EnsureSession creates a tmux session if it doesn't exist.
+// The initial placeholder window is named "_init" so the window picker can skip it.
 func EnsureSession(name string) error {
 	if SessionExists(name) {
 		return nil
 	}
-	cmd := exec.Command("tmux", "new-session", "-d", "-s", name)
+	cmd := exec.Command("tmux", "new-session", "-d", "-s", name, "-n", InitWindowName)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("creating session %s: %s: %w", name, string(out), err)
 	}
@@ -168,6 +173,21 @@ func IsWindowDead(err error) bool {
 	return strings.Contains(msg, "not found") ||
 		strings.Contains(msg, "no such") ||
 		strings.Contains(msg, "can't find")
+}
+
+// CleanupInitWindow kills the placeholder _init window if it still exists.
+// Safe to call multiple times — no-op if the window is already gone.
+func CleanupInitWindow(session string) {
+	windows, err := ListWindows(session)
+	if err != nil {
+		return
+	}
+	for _, w := range windows {
+		if w.Name == InitWindowName {
+			_ = KillWindow(session, w.ID)
+			return
+		}
+	}
 }
 
 // KillWindow kills a tmux window. Returns nil if window doesn't exist.

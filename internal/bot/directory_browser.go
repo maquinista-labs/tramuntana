@@ -253,6 +253,9 @@ func (b *Bot) createWindowForDir(dir string, userID int64, chatID int64, threadI
 		return nil, fmt.Errorf("creating window: %w", err)
 	}
 
+	// Kill the placeholder _init window now that we have a real window
+	tmux.CleanupInitWindow(b.config.TmuxSessionName)
+
 	// Wait for session_map entry (up to 5s)
 	sessionMapPath := filepath.Join(b.config.TramuntanaDir, "session_map.json")
 	sessionKey := ""

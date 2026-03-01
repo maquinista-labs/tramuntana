@@ -76,7 +76,7 @@ func (b *Bot) handleUnboundTopic(msg *tgbotapi.Message) {
 	boundWindows := b.state.AllBoundWindowIDs()
 	var unboundWindows []tmux.Window
 	for _, w := range windows {
-		if !boundWindows[w.ID] {
+		if !boundWindows[w.ID] && w.Name != tmux.InitWindowName {
 			unboundWindows = append(unboundWindows, w)
 		}
 	}
