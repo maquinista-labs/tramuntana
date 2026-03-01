@@ -3,6 +3,8 @@ package bot
 import (
 	"fmt"
 	"log"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +13,8 @@ import (
 	"github.com/otaviocarvalho/tramuntana/internal/monitor"
 	"github.com/otaviocarvalho/tramuntana/internal/tmux"
 )
+
+var interactiveRetryRe = regexp.MustCompile(`retry after (\d+)`)
 
 // interactiveKey identifies an interactive UI session.
 type interactiveKey struct {
@@ -56,15 +60,21 @@ func (b *Bot) handleInteractiveUI(chatID int64, threadID int, userID int64, wind
 	interactive.mu.RUnlock()
 
 	if hasExisting {
-		// Edit existing message
-		if err := b.editMessageWithKeyboard(chatID, existingMsgID, text, keyboard); err != nil {
+		// Edit existing message with retry
+		if err := retryOnFlood(func() error {
+			return b.editMessageWithKeyboard(chatID, existingMsgID, text, keyboard)
+		}); err != nil {
 			log.Printf("Error editing interactive message: %v", err)
 		}
 	} else {
-		// Send new message
-		msg, err := b.sendMessageWithKeyboard(chatID, threadID, text, keyboard)
-		if err != nil {
-			log.Printf("Error sending interactive message: %v", err)
+		// Send new message with retry
+		var msg tgbotapi.Message
+		if err := retryOnFlood(func() error {
+			var sendErr error
+			msg, sendErr = b.sendMessageWithKeyboard(chatID, threadID, text, keyboard)
+			return sendErr
+		}); err != nil {
+			log.Printf("Error sending interactive message after retries: %v", err)
 			return
 		}
 		interactive.mu.Lock()
@@ -154,6 +164,35 @@ func (b *Bot) handleInteractiveCallback(cq *tgbotapi.CallbackQuery) {
 	// Wait for UI to update, then refresh
 	time.Sleep(300 * time.Millisecond)
 	b.handleInteractiveUI(chatID, threadID, userID, windowID)
+}
+
+// retryOnFlood retries a Telegram API call with exponential backoff on 429 errors.
+// Respects the retry-after header from Telegram. Retries up to 4 times.
+func retryOnFlood(fn func() error) error {
+	const maxRetries = 4
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		err := fn()
+		if err == nil {
+			return nil
+		}
+		errStr := err.Error()
+		if !strings.Contains(errStr, "Too Many Requests") && !strings.Contains(errStr, "429") {
+			return err // non-retryable error
+		}
+		if attempt == maxRetries {
+			return err
+		}
+		// Parse retry-after, default to exponential backoff
+		wait := time.Duration(1<<uint(attempt)) * time.Second
+		if m := interactiveRetryRe.FindStringSubmatch(errStr); len(m) == 2 {
+			if secs, parseErr := strconv.Atoi(m[1]); parseErr == nil && secs > 0 {
+				wait = time.Duration(secs)*time.Second + time.Second
+			}
+		}
+		log.Printf("Interactive message rate-limited, retrying in %v (attempt %d/%d)", wait, attempt+1, maxRetries)
+		time.Sleep(wait)
+	}
+	return nil // unreachable
 }
 
 // buildInteractiveKeyboard builds the inline keyboard for interactive navigation.
