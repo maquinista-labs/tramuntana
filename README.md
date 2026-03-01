@@ -105,6 +105,9 @@ All commands use a namespace prefix: `c_` for Claude/terminal, `p_` for project,
 | `/t_auto` | Auto mode — loop claiming tasks until queue empty |
 | `/t_batch [id1 id2...]` | Batch mode — work through tasks in order (prompts for IDs if omitted) |
 | `/t_merge [branch]` | Smart merge with automatic conflict resolution (prompts for branch if omitted) |
+| `/t_unclaim [task-id]` | Release a claimed task back to ready (shows picker of claimed tasks if no arg) |
+| `/t_plan` | Open a planner session — AI-assisted task decomposition and creation |
+| `/plan` | Alias for `/t_plan` (planner session management) |
 
 ### Prompt-then-type
 
@@ -120,6 +123,37 @@ Commands that take arguments (`/p_bind`, `/p_add`, `/t_batch`, `/t_merge`) suppo
 **`/t_merge`** runs in two phases:
 1. Attempts clean `--no-ff` merge — if successful, cleans up worktree
 2. On conflict — aborts merge, creates a merge topic, spawns Claude with conflict file list and resolution instructions
+
+## Planner sessions
+
+`/plan` (or `/t_plan`) opens an on-demand planner session in any topic. The planner helps decompose a feature description into a Minuano task DAG.
+
+| Subcommand | Description |
+|------------|-------------|
+| `/plan` (no args) | Start a new planner or show status of existing one |
+| Inline buttons | **Release** drafts, **Stop** session, **Reopen** crashed session |
+
+**Crash recovery:** If a planner session's tmux window dies, the crash handler detects it (via Postgres `LISTEN planner_events`) and posts an alert with a **Reopen** button to the planner topic.
+
+## Approval flow
+
+Tasks with `requires_approval=true` enter `pending_approval` status when all their dependencies complete. The approval handler:
+
+1. Detects `pending_approval` transitions via `LISTEN task_events`
+2. Posts the task to the **#approvals** topic with an inline keyboard:
+   - **Approve** — transitions to `ready`, claimable by agents
+   - **Revise** — prompts for revision instructions (TODO)
+   - **Reject** — prompts for rejection reason, transitions to `rejected`
+
+## Telegram topic architecture
+
+| Topic | Purpose | Updated by |
+|-------|---------|------------|
+| Any topic | Interactive Claude Code sessions, `/plan` for planner | User commands |
+| **#queue** | Live status board — pinned message with all tasks | QueueHandler (auto-updated on task events) |
+| **#approvals** | Human approval gates with inline keyboards | ApprovalHandler (on `pending_approval` events) |
+
+The queue and approval handlers use Postgres `LISTEN/NOTIFY` for real-time event-driven updates instead of polling.
 
 ## Interactive UI
 
@@ -220,6 +254,9 @@ The monitor uses `session_map.json` to locate JSONL files for each session.
 | `MINUANO_BIN` | Path to minuano binary | `minuano` |
 | `MINUANO_DB` | Database URL passed to minuano via `--db` | — |
 | `MINUANO_SCRIPTS_DIR` | Path to minuano scripts (added to PATH in windows) | — |
+| `TRAMUNTANA_QUEUE_TOPIC_ID` | Telegram topic ID for the live status board | — |
+| `TRAMUNTANA_APPROVALS_TOPIC_ID` | Telegram topic ID for approval gates | — |
+| `TRAMUNTANA_DEFAULT_PROJECT` | Default Minuano project ID | — |
 
 ## State files
 
